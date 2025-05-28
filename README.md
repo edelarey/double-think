@@ -281,4 +281,11 @@ Validate inputs in /api/extract-segment (start, end, playbackSpeed).
 
 Limit upload size: multer({ dest: 'uploads/', limits: { fileSize: 10 * 1024 * 1024 } }).
 
+# Improvements
+May 28 2025
+Display Original Wave Form and Reversed Wave Form
+Allow Selection of Segments in either wave form
+Allow for saving and annotating of segments
+Allow for replay of original and reversed segments in snippet library
+
 
