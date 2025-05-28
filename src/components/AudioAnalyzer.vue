@@ -28,8 +28,6 @@
                 Save Segment
                 <span v-if="!selectedSegment && (console.log('[Save Segment disabled] selectedSegment:', selectedSegment), false)"></span>
               </button>
-              <input v-model="segmentAnnotation" class="form-control d-inline-block w-auto me-2" placeholder="Add annotation" />
-              <button class="btn btn-info" @click="saveAnnotation" :disabled="!selectedSegment || !segmentAnnotation">Save Annotation</button>
               <select v-model="playbackSpeed" class="form-select w-auto ms-2" @change="updatePlaybackSpeed">
                 <option value="0.5">0.5x</option>
                 <option value="0.75">0.75x</option>
@@ -47,6 +45,10 @@
                 <audio ref="snippetAudios" :src="snippet.url" controls class="w-100"></audio>
                 <p><strong>Forward:</strong></p>
                 <audio ref="snippetForwardAudios" :src="snippet.forwardUrl" controls class="w-100"></audio>
+                <div class="d-flex align-items-center mb-2">
+                  <input v-model="snippet._pendingAnnotation" class="form-control d-inline-block w-auto me-2" placeholder="Add annotation" />
+                  <button class="btn btn-info btn-sm" @click="saveSnippetAnnotation(index)" :disabled="!snippet._pendingAnnotation">Save Annotation</button>
+                </div>
                 <p v-if="snippet.annotation">Annotation: {{ snippet.annotation }}</p>
                 <a :href="snippet.url" download class="btn btn-outline-secondary btn-sm me-2">Download Reverse</a>
                 <a :href="snippet.forwardUrl" download class="btn btn-outline-secondary btn-sm">Download Forward</a>
@@ -327,18 +329,17 @@ const saveSegment = async () => {
       end: selectedSegment.value.end,
       analysisId: result.value.analysisId,
       playbackSpeed: playbackSpeed.value,
+      annotation: segmentAnnotation.value // Attach annotation directly to snippet
     });
-    
-    // Use the snippet object directly from the response 
+
+    // Use the snippet object directly from the response
     const snippet = response.data;
-    result.value.snippets.push(snippet);
-    
+    // Ensure annotation is present in snippet
     if (segmentAnnotation.value) {
-      // Pass the annotation to be saved
-      await saveAnnotation(true, result.value.snippets.length - 1);
-      // Update the local snippet with the annotation
       snippet.annotation = segmentAnnotation.value;
     }
+    result.value.snippets.push(snippet);
+
     segmentAnnotation.value = '';
     selectedSegment.value = null;
     updatePlaybackSpeed();
@@ -347,14 +348,17 @@ const saveSegment = async () => {
   }
 };
 
-const saveAnnotation = async (isSnippet = true, index = result.value.snippets.length - 1) => {
+const saveSnippetAnnotation = async (index) => {
+  const snippet = result.value.snippets[index];
   try {
     await axios.post('http://localhost:3000/api/save-annotation', {
       analysisId: result.value.analysisId,
       segmentIndex: index,
-      annotation: segmentAnnotation.value,
-      isSnippet,
+      annotation: snippet._pendingAnnotation,
+      isSnippet: true,
     });
+    snippet.annotation = snippet._pendingAnnotation;
+    snippet._pendingAnnotation = '';
   } catch (err) {
     error.value = 'Failed to save annotation: ' + err.message;
   }

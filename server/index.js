@@ -20,18 +20,31 @@ app.use(cors({
   allowedHeaders: ['Content-Type'],
 }));
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${file.fieldname}-${Date.now()}${ext}`);
+    }
+  })
+});
 app.use(express.static(path.join(__dirname, '../dist')));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const outputDir = path.join(__dirname, '../outputs');
+const snippetsDir = path.join(outputDir, 'snippets');
+const reversedDir = path.join(outputDir, 'reversed');
 await fs.mkdir(outputDir, { recursive: true });
+await fs.mkdir(snippetsDir, { recursive: true });
+await fs.mkdir(reversedDir, { recursive: true });
 
 app.post('/api/analyze', upload.single('audio'), async (req, res) => {
   try {
     const inputPath = req.file.path;
-    const outputFileName = `reversed_${Date.now()}.wav`;
-    const outputPath = path.join(outputDir, outputFileName);
+    const ext = path.extname(req.file.originalname) || '.wav';
+    const outputFileName = `reversed_${Date.now()}${ext}`;
+    const outputPath = path.join(reversedDir, outputFileName);
     const analysisId = Date.now();
 
     // Make sure ffmpeg converts to a web-compatible format with explicit format
@@ -156,7 +169,7 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       detectedSegments,
       snippets: [],
       originalAudioPath: inputPath,
-      reversedAudioUrl: `/outputs/${outputFileName}`,
+      reversedAudioUrl: `/outputs/reversed/${outputFileName}`,
       duration: signal.length / sampleRate,
       normalizedEnergyValues,  // Store for redetection
       normalizedFormantShifts, // Store for redetection
@@ -255,7 +268,7 @@ app.post('/api/redetect', async (req, res) => {
 app.post('/api/extract-segment', upload.none(), async (req, res) => {
   try {
     const { audioUrl, start, end, analysisId, playbackSpeed } = req.body;
-    const audioPath = path.join(outputDir, path.basename(audioUrl));
+    const audioPath = path.join(reversedDir, path.basename(audioUrl));
     const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
     const analysisData = JSON.parse(await fs.readFile(analysisPath));
     const originalAudioPath = analysisData.originalAudioPath;
@@ -268,10 +281,11 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
       return res.status(404).json({ error: 'Audio file not found' });
     }
 
-    const snippetFileName = `snippet_${Date.now()}.wav`;
-    const snippetPath = path.join(outputDir, snippetFileName);
-    const forwardSnippetFileName = `forward_snippet_${Date.now()}.wav`;
-    const forwardSnippetPath = path.join(outputDir, forwardSnippetFileName);
+    const ext = path.extname(audioUrl) || '.wav';
+    const snippetFileName = `snippet_${Date.now()}${ext}`;
+    const snippetPath = path.join(snippetsDir, snippetFileName);
+    const forwardSnippetFileName = `forward_snippet_${Date.now()}${ext}`;
+    const forwardSnippetPath = path.join(snippetsDir, forwardSnippetFileName);
 
     await new Promise((resolve, reject) => {
       ffmpeg(audioPath)
@@ -297,8 +311,8 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
     const snippet = {
       file: snippetFileName,
       forwardFile: forwardSnippetFileName,
-      url: `/outputs/${snippetFileName}`,
-      forwardUrl: `/outputs/${forwardSnippetFileName}`,
+      url: `/outputs/snippets/${snippetFileName}`,
+      forwardUrl: `/outputs/snippets/${forwardSnippetFileName}`,
       start: parseFloat(start),
       end: parseFloat(end),
       annotation: '',
@@ -322,6 +336,12 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
     // } catch (err) {
     //   console.warn(`Failed to delete original audio: ${originalAudioPath}`);
     // }
+
+    // Save annotation as JSON file if present
+    if (req.body.annotation) {
+      const annotationPath = path.join(snippetsDir, `${path.parse(snippetFileName).name}.json`);
+      await fs.writeFile(annotationPath, JSON.stringify({ annotation: req.body.annotation }, null, 2));
+    }
 
     res.json(snippet);
   } catch (error) {
