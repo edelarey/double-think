@@ -113,7 +113,13 @@ const initializeWaveformAndSpectrogram = () => {
       waveSurfer.destroy();
       waveSurfer = null;
     }
-    regionsPlugin = RegionsPlugin.create();
+    regionsPlugin = RegionsPlugin.create({
+      dragSelection: {
+        color: 'rgba(0, 123, 255, 0.2)',
+        loop: false,
+        resize: true,
+      }
+    });
     waveSurfer = WaveSurfer.create({
       container: waveform.value,
       waveColor: 'rgb(200, 0, 200)',
@@ -132,6 +138,35 @@ const initializeWaveformAndSpectrogram = () => {
     waveSurfer.on('error', err => {
       error.value = `Error loading audio: ${err.message}`;
     });
+
+    // Attach region events to the regionsPlugin, not waveSurfer
+    if (regionsPlugin) {
+      regionsPlugin.on('region-created', region => {
+        selectedSegment.value = {
+          start: region.start,
+          end: region.end
+        };
+        // Remove other regions to allow only one selection at a time
+        Object.values(regionsPlugin.regions).forEach(r => {
+          if (r.id !== region.id) r.remove();
+        });
+      });
+      regionsPlugin.on('region-updated', region => {
+        selectedSegment.value = {
+          start: region.start,
+          end: region.end
+        };
+      });
+      regionsPlugin.on('region-removed', region => {
+        if (
+          selectedSegment.value &&
+          selectedSegment.value.start === region.start &&
+          selectedSegment.value.end === region.end
+        ) {
+          selectedSegment.value = null;
+        }
+      });
+    }
     waveSurfer.load(result.value.reversedAudioUrl);
   }
 
