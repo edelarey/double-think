@@ -62,15 +62,6 @@
           </div>
         </div>
         <p><a :href="result.analysisFile" download class="btn btn-outline-secondary">Download Analysis (JSON)</a></p>
-        <h5>Detected Reverse Speech Segments</h5>
-        <ul v-if="result.detectedSegments.length">
-          <li v-for="(segment, index) in result.detectedSegments" :key="index">
-            {{ segment.start.toFixed(2) }}s - {{ segment.end.toFixed(2) }}s
-            <span v-if="segment.annotation"> | Annotation: {{ segment.annotation }}</span>
-            <input v-model="segment.annotation" class="form-control d-inline-block w-auto ms-2" placeholder="Add annotation" @blur="saveSegmentAnnotation(index, false)" />
-          </li>
-        </ul>
-        <p v-else>No segments detected.</p>
         <h5>MFCC Features</h5>
         <VChart type="line" :data="mfccChartData" :options="chartOptions" class="chart" />
         <h5>Pitch and Formants</h5>
@@ -96,7 +87,7 @@ const spectrogram = ref(null);
 const selectedSegment = ref(null);
 const segmentAnnotation = ref('');
 const energyThreshold = ref(0.1);
-const formantShiftThreshold = ref(0.05);
+const formantShiftThreshold = ref(0.75);
 const playbackSpeed = ref(1);
 const mainAudio = ref(null);
 const snippetAudios = ref([]);
@@ -113,7 +104,83 @@ const handleFileSelect = (event) => {
   playbackSpeed.value = 1;
 };
 
+import { nextTick } from 'vue';
+
+const initializeWaveformAndSpectrogram = () => {
+  // WaveSurfer
+  if (result.value?.reversedAudioUrl && waveform.value) {
+    if (waveSurfer) {
+      waveSurfer.destroy();
+      waveSurfer = null;
+    }
+    regionsPlugin = RegionsPlugin.create();
+    waveSurfer = WaveSurfer.create({
+      container: waveform.value,
+      waveColor: 'rgb(200, 0, 200)',
+      progressColor: 'rgb(100, 0, 100)',
+      height: 100,
+      plugins: [regionsPlugin],
+      responsive: true,
+      normalize: true,
+      minPxPerSec: 50,
+      cursorColor: '#333',
+      barWidth: 2
+    });
+    waveSurfer.on('ready', () => {
+      updatePlaybackSpeed();
+    });
+    waveSurfer.on('error', err => {
+      error.value = `Error loading audio: ${err.message}`;
+    });
+    waveSurfer.load(result.value.reversedAudioUrl);
+  }
+
+  // p5 Spectrogram
+  if (result.value?.spectrogramData && spectrogram.value) {
+    if (p5Instance) {
+      p5Instance.remove();
+      p5Instance = null;
+    }
+    p5Instance = new p5((sketch) => {
+      sketch.setup = () => {
+        const container = spectrogram.value.getBoundingClientRect();
+        sketch.createCanvas(container.width || 400, 200).parent(spectrogram.value);
+        sketch.background(255);
+        sketch.noLoop();
+      };
+      sketch.draw = () => {
+        if (!result.value || !result.value.spectrogramData) {
+          sketch.background(255);
+          sketch.fill(0);
+          sketch.textAlign(sketch.CENTER);
+          sketch.text('No spectrogram data available', sketch.width / 2, sketch.height / 2);
+          return;
+        }
+        sketch.background(255);
+        const spec = result.value.spectrogramData;
+        const cellWidth = sketch.width / spec.length;
+        const cellHeight = sketch.height / (spec[0]?.length || 1);
+        for (let i = 0; i < spec.length; i++) {
+          for (let j = 0; j < spec[i].length; j++) {
+            const intensity = sketch.map(spec[i][j], 0, 1, 0, 255);
+            sketch.fill(intensity);
+            sketch.noStroke();
+            sketch.rect(i * cellWidth, (spec[i].length - 1 - j) * cellHeight, cellWidth, cellHeight);
+          }
+        }
+      };
+      sketch.windowResized = () => {
+        const container = spectrogram.value.getBoundingClientRect();
+        sketch.resizeCanvas(container.width || 400, 200);
+        sketch.redraw();
+      };
+    });
+    p5Instance.redraw();
+  }
+};
+
 const analyzeAudio = async () => {
+  console.log('analyzeAudio called');
   if (!file.value) return;
   isProcessing.value = true;
   error.value = null;
@@ -132,6 +199,8 @@ const analyzeAudio = async () => {
       ...response.data,
       snippets: [],
     };
+    await nextTick();
+    initializeWaveformAndSpectrogram();
   } catch (err) {
     error.value = 'Failed to process audio: ' + err.message;
   } finally {
@@ -158,7 +227,7 @@ const saveSegment = async () => {
       playbackSpeed: playbackSpeed.value,
     });
     
-    // Use the snippet object directly from the response
+    // Use the snippet object directly from the response 
     const snippet = response.data;
     result.value.snippets.push(snippet);
     
@@ -189,42 +258,7 @@ const saveAnnotation = async (isSnippet = true, index = result.value.snippets.le
   }
 };
 
-const saveSegmentAnnotation = async (index, isSnippet) => {
-  try {
-    await axios.post('http://localhost:3000/api/save-annotation', {
-      analysisId: result.value.analysisId,
-      segmentIndex: index,
-      annotation: result.value.detectedSegments[index].annotation,
-      isSnippet,
-    });
-  } catch (err) {
-    error.value = 'Failed to save annotation: ' + err.message;
-  }
-};
 
-const redetectSegments = async () => {
-  try {
-    const response = await axios.post('http://localhost:3000/api/redetect', {
-      analysisId: result.value.analysisId,
-      energyThreshold: energyThreshold.value,
-      formantShiftThreshold: formantShiftThreshold.value,
-    });
-    result.value.detectedSegments = response.data.detectedSegments;
-    regionsPlugin.clearRegions();
-    result.value.detectedSegments.forEach((segment, index) => {
-      regionsPlugin.addRegion({
-        start: segment.start,
-        end: segment.end,
-        color: 'rgba(255, 0, 0, 0.3)',
-        drag: false,
-        resize: false,
-        id: `detected-${index}`,
-      });
-    });
-  } catch (err) {
-    error.value = 'Failed to re-detect segments: ' + err.message;
-  }
-};
 
 const updatePlaybackSpeed = () => {
   if (waveSurfer) {
@@ -248,104 +282,39 @@ const updatePlaybackSpeed = () => {
 watch(playbackSpeed, () => {
   updatePlaybackSpeed();
 });
-watch(() => result.value?.reversedAudioUrl, (newUrl) => {
-  if (newUrl && waveSurfer) {
-    waveSurfer.load(newUrl);
-  }
-}, { immediate: true });
-watch(result, (newResult) => {
-  if (newResult?.reversedAudioUrl && waveSurfer) {
-    waveSurfer.load(newResult.reversedAudioUrl);
-  }
-}, { immediate: true });
 
 onMounted(() => {
-  if (waveform.value) {
-    regionsPlugin = RegionsPlugin.create();
-    waveSurfer = WaveSurfer.create({
-      container: waveform.value,
-      waveColor: '#4CAF50',
-      progressColor: '#28A745',
-      height: 100,
-      plugins: [regionsPlugin],
-    });
-
-    waveSurfer.on('ready', () => {
-      if (result.value && result.value.detectedSegments) {
-        regionsPlugin.clearRegions();
-        result.value.detectedSegments.forEach((segment, index) => {
-          regionsPlugin.addRegion({
-            start: segment.start,
-            end: segment.end,
-            color: 'rgba(255, 0, 0, 0.3)',
-            drag: false,
-            resize: false,
-            id: `detected-${index}`,
-          });
-        });
+  const resizeObserver = new ResizeObserver(entries => {
+    for (let entry of entries) {
+      if (entry.target === waveform.value && waveSurfer) {
+        waveSurfer.setHeight(100); // Or recalculate based on new size
       }
-      updatePlaybackSpeed();
-    });
-
-    // Enable region selection
-    waveSurfer.on('region-click', (region) => {
-      selectedSegment.value = { start: region.start, end: region.end };
-      
-      // If it's a detected region, pre-fill its annotation if available
-      if (region.id.startsWith('detected-')) {
-        const index = parseInt(region.id.split('-')[1]);
-        if (result.value.detectedSegments[index]?.annotation) {
-          segmentAnnotation.value = result.value.detectedSegments[index].annotation;
-        } else {
-          segmentAnnotation.value = '';
-        }
+      if (entry.target === spectrogram.value && p5Instance) {
+        const container = spectrogram.value.getBoundingClientRect();
+        p5Instance.resizeCanvas(container.width || 400, 200);
+        p5Instance.redraw();
       }
-    });
+    }
+  });
 
-    // Allow for creating custom regions too
-    regionsPlugin.on('region-created', (region) => {
-      if (!region.id.startsWith('detected-')) {
-        // Remove other custom regions
-        regionsPlugin.getRegions().forEach((r) => {
-          if (!r.id.startsWith('detected-') && r !== region) r.remove();
-        });
-        selectedSegment.value = { start: region.start, end: region.end };
-      }
-    });
+  if (waveform.value) resizeObserver.observe(waveform.value);
+  if (spectrogram.value) resizeObserver.observe(spectrogram.value);
 
-    regionsPlugin.on('region-updated', (region) => {
-      if (!region.id.startsWith('detected-')) {
-        selectedSegment.value = { start: region.start, end: region.end };
-      }
-    });
-  }
-
-  if (spectrogram.value) {
-    p5Instance = new p5((sketch) => {
-      sketch.setup = () => {
-        sketch.createCanvas(400, 200).parent(spectrogram.value);
-        sketch.background(255);
-      };
-      sketch.draw = () => {
-        if (!result.value) return;
-        sketch.background(255);
-        const spec = result.value.spectrogramData;
-        for (let i = 0; i < spec.length; i++) {
-          for (let j = 0; j < spec[i].length; j++) {
-            sketch.fill(spec[i][j] * 255);
-            sketch.noStroke();
-            sketch.rect(i * 4, j * 4, 4, 4);
-          }
-        }
-      };
-    });
-  }
+  onUnmounted(() => {
+    console.log('Unmounting AudioAnalyzer, cleaning up resources');
+    if (resizeObserver) resizeObserver.disconnect();
+    if (waveSurfer) {
+      waveSurfer.destroy();
+      waveSurfer = null;
+    }
+    if (p5Instance) {
+      p5Instance.remove();
+      p5Instance = null;
+    }
+  });
 });
 
-onUnmounted(() => {
-  if (waveSurfer) waveSurfer.destroy();
-  if (p5Instance) p5Instance.remove();
-});
+
 
 const mfccChartData = computed(() => {
   if (!result.value) return {};

@@ -22,7 +22,8 @@ app.use(cors({
 
 const upload = multer({ dest: 'uploads/' });
 app.use(express.static(path.join(__dirname, '../dist')));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const outputDir = path.join(__dirname, '../outputs');
 await fs.mkdir(outputDir, { recursive: true });
 
@@ -33,42 +34,74 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
     const outputPath = path.join(outputDir, outputFileName);
     const analysisId = Date.now();
 
+    // Make sure ffmpeg converts to a web-compatible format with explicit format
     await new Promise((resolve, reject) => {
       ffmpeg(inputPath)
         .audioFilter('areverse')
+        .audioChannels(1) // Ensure mono audio for consistent processing
+        .audioFrequency(44100) // Standard web audio frequency
+        .format('wav') // Explicitly set format to WAV
+        .audioCodec('pcm_s16le') // Use standard PCM format for maximum compatibility
         .output(outputPath)
         .on('end', resolve)
-        .on('error', reject)
+        .on('error', (err) => {
+          console.error('FFmpeg error:', err);
+          reject(err);
+        })
         .run();
     });
+
+    // Verify the output file exists and has content
+    try {
+      const outputStat = await fs.stat(outputPath);
+      console.log(`Output file created: ${outputPath}, size: ${outputStat.size} bytes`);
+      if (outputStat.size === 0) {
+        throw new Error('Output file is empty');
+      }
+    } catch (err) {
+      console.error('Error verifying output file:', err);
+      throw err;
+    }
 
     const audioData = await fs.readFile(outputPath);
     const decoded = await WavDecoder.decode(audioData);
     const signal = decoded.channelData[0];
     const sampleRate = decoded.sampleRate;
 
+    console.log(`Decoded audio: ${signal.length} samples, ${sampleRate}Hz`);
+
     const bufferSize = 512;
-    const hopSize = 4096; // Increased to reduce frame count
+    const hopSize = 256;
     const mfccFeatures = [];
     const energyValues = [];
     const chromaValues = [];
     const spectrogramData = [];
 
-    for (let i = 0; i < signal.length; i += bufferSize) {
+    // Process audio data
+    for (let i = 0; i < signal.length; i += hopSize) {
       const frame = signal.slice(i, i + bufferSize);
       if (frame.length === bufferSize) {
-        const features = Meyda.extract(['mfcc', 'energy', 'chroma', 'amplitudeSpectrum'], frame, {
-          sampleRate,
-          bufferSize,
-        });
-        if (!features.amplitudeSpectrum) {
-          console.error('amplitudeSpectrum missing in features:', features);
-          continue;
+        try {
+          const features = Meyda.extract(['mfcc', 'energy', 'chroma', 'amplitudeSpectrum'], frame, {
+            sampleRate,
+            bufferSize,
+          });
+          
+          if (features && features.amplitudeSpectrum) {
+            mfccFeatures.push(features.mfcc);
+            energyValues.push(features.energy);
+            chromaValues.push(features.chroma);
+            
+            // Normalize amplitude spectrum for better visualization
+            const normalizedSpectrum = Array.from(
+              features.amplitudeSpectrum.slice(0, 128)
+            ).map(val => Math.min(1, val / 10));
+            
+            spectrogramData.push(normalizedSpectrum);
+          }
+        } catch (err) {
+          console.error('Error extracting features for frame:', err);
         }
-        mfccFeatures.push(features.mfcc);
-        energyValues.push(features.energy);
-        chromaValues.push(features.chroma);
-        spectrogramData.push(Array.from(features.amplitudeSpectrum.slice(0, 50)));
       }
     }
 
@@ -81,12 +114,13 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       formantShifts.push(Math.abs(chromaValues[i][0] - chromaValues[i - 1][0]));
     }
 
-    // Normalize energyValues and formantShifts for more robust detection
+    // Normalize energyValues and formantShifts
     const maxEnergy = Math.max(...energyValues);
     const maxFormantShift = Math.max(...formantShifts);
     const normalizedEnergyValues = energyValues.map(v => v / (maxEnergy || 1));
     const normalizedFormantShifts = formantShifts.map(v => v / (maxFormantShift || 1));
 
+    // Define detectSegments function but don't call it automatically
     const detectSegments = (energyThreshold = 0.1, formantShiftThreshold = 0.1) => {
       const detectedSegments = [];
       const frameDuration = hopSize / sampleRate;
@@ -110,7 +144,8 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       return detectedSegments;
     };
 
-    const detectedSegments = detectSegments();
+    // Don't auto-detect segments - start with empty array
+    const detectedSegments = [];
 
     const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
     const analysisData = {
@@ -121,10 +156,16 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       detectedSegments,
       snippets: [],
       originalAudioPath: inputPath,
-      reversedAudioUrl: `/outputs/${outputFileName}`, // Save the URL in the analysis data
+      reversedAudioUrl: `/outputs/${outputFileName}`,
+      duration: signal.length / sampleRate,
+      normalizedEnergyValues,  // Store for redetection
+      normalizedFormantShifts, // Store for redetection
+      hopSize,
+      sampleRate
     };
     await fs.writeFile(analysisPath, JSON.stringify(analysisData, null, 2));
 
+    // Return complete response including full paths
     res.json({
       reversedAudioUrl: `/outputs/${outputFileName}`,
       analysisFile: `/outputs/${path.basename(analysisPath)}`,
@@ -132,60 +173,35 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       mfccSummary: mfccFeatures.slice(0, 5),
       pitchSummary: [],
       formantSummary: formantValues,
-      spectrogramData: spectrogramData.slice(0, 1000), // Limit for display
+      spectrogramData: spectrogramData.slice(0, 300),
       detectedSegments,
+      duration: signal.length / sampleRate,
+      sampleRate: sampleRate,
+      fullReversedAudioUrl: `http://localhost:${port}/outputs/${outputFileName}`,
     });
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).json({ error: 'Processing failed' });
+    res.status(500).json({ error: 'Processing failed: ' + error.message });
   }
 });
 
+// Update the redetect endpoint to use stored values
 app.post('/api/redetect', async (req, res) => {
   try {
     const { analysisId, energyThreshold, formantShiftThreshold } = req.body;
     const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
     const analysisData = JSON.parse(await fs.readFile(analysisPath));
     
-    // Fix: Use the correct path to the reversed audio file
-    const outputFileName = path.basename(analysisData.reversedAudioUrl || `reversed_${analysisId}.wav`);
-    const audioPath = path.join(outputDir, outputFileName);
-
-    const audioData = await fs.readFile(audioPath);
-    const decoded = await WavDecoder.decode(audioData);
-    const signal = decoded.channelData[0];
-    const sampleRate = decoded.sampleRate;
-
-    const bufferSize = 512;
-    const hopSize = 4096; // Use the same hop size as in the original analysis
-    const energyValues = [];
-    const chromaValues = [];
-
-    for (let i = 0; i < signal.length; i += bufferSize) {
-      const frame = signal.slice(i, i + bufferSize);
-      if (frame.length === bufferSize) {
-        const features = Meyda.extract(['energy', 'chroma'], frame, {
-          sampleRate,
-          bufferSize,
-        });
-        energyValues.push(features.energy);
-        chromaValues.push(features.chroma);
-      }
+    // Use stored normalized values instead of reprocessing the audio
+    const { normalizedEnergyValues, normalizedFormantShifts, hopSize, sampleRate } = analysisData;
+    
+    if (!normalizedEnergyValues || !normalizedFormantShifts) {
+      throw new Error('Missing energy or formant data in analysis file');
     }
-
-    const formantShifts = [];
-    for (let i = 1; i < chromaValues.length; i++) {
-      formantShifts.push(Math.abs(chromaValues[i][0] - chromaValues[i - 1][0]));
-    }
-
-    // Normalize values to match the original detection logic
-    const maxEnergy = Math.max(...energyValues);
-    const maxFormantShift = Math.max(...formantShifts);
-    const normalizedEnergyValues = energyValues.map(v => v / (maxEnergy || 1));
-    const normalizedFormantShifts = formantShifts.map(v => v / (maxFormantShift || 1));
 
     const detectedSegments = [];
     const frameDuration = hopSize / sampleRate;
+    
     for (let i = 0; i < normalizedEnergyValues.length; i++) {
       if (
         normalizedEnergyValues[i] > energyThreshold &&
@@ -200,19 +216,39 @@ app.post('/api/redetect', async (req, res) => {
         });
       }
     }
-
-    // Add reversedAudioUrl if it doesn't exist in the analysis data
-    if (!analysisData.reversedAudioUrl) {
-      analysisData.reversedAudioUrl = `/outputs/${outputFileName}`;
+    
+    // Merge adjacent segments
+    const mergedSegments = [];
+    let currentSegment = null;
+    
+    for (const segment of detectedSegments) {
+      if (!currentSegment) {
+        currentSegment = { ...segment };
+      } else if (segment.start - currentSegment.end < frameDuration * 2) {
+        // If segments are close, merge them
+        currentSegment.end = segment.end;
+      } else {
+        // If segments are not close, add current segment and start a new one
+        mergedSegments.push(currentSegment);
+        currentSegment = { ...segment };
+      }
     }
     
-    analysisData.detectedSegments = detectedSegments;
+    // Add the last segment if it exists
+    if (currentSegment) {
+      mergedSegments.push(currentSegment);
+    }
+    
+    analysisData.detectedSegments = mergedSegments;
     await fs.writeFile(analysisPath, JSON.stringify(analysisData, null, 2));
 
-    res.json({ detectedSegments });
+    res.json({ 
+      detectedSegments: mergedSegments,
+      fullReversedAudioUrl: `http://localhost:${port}${analysisData.reversedAudioUrl}`
+    });
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).json({ error: 'Failed to re-detect segments' });
+    res.status(500).json({ error: 'Failed to re-detect segments: ' + error.message });
   }
 });
 
@@ -359,6 +395,33 @@ app.get('/api/snippets', async (req, res) => {
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Failed to list snippets' });
+  }
+});
+
+app.get('/api/check-audio/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(outputDir, filename);
+    
+    try {
+      await fs.access(filePath);
+      
+      // Get file stats
+      const stats = await fs.stat(filePath);
+      const fileInfo = {
+        exists: true,
+        size: stats.size,
+        path: filePath,
+        created: stats.birthtime
+      };
+      
+      res.json(fileInfo);
+    } catch (err) {
+      res.json({ exists: false, error: err.message });
+    }
+  } catch (error) {
+    console.error('Error checking audio:', error);
+    res.status(500).json({ error: 'Failed to check audio file' });
   }
 });
 
