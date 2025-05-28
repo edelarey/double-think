@@ -128,6 +128,8 @@ import { nextTick } from 'vue';
 
 const initializeWaveformAndSpectrogram = () => {
   // Original WaveSurfer
+  console.log('[AudioAnalyzer] originalAudioUrl:', result);
+  console.log('[AudioAnalyzer] originalWaveform ref:', originalWaveform.value);
   if (result.value?.originalAudioUrl && originalWaveform.value) {
     if (originalWaveSurfer) {
       originalWaveSurfer.destroy();
@@ -158,6 +160,29 @@ const initializeWaveformAndSpectrogram = () => {
     originalWaveSurfer.on('error', err => {
       error.value = `Error loading original audio: ${err.message}`;
     });
+
+    // Region events for original waveform
+    if (originalRegionsPlugin) {
+      originalRegionsPlugin.on('region-created', region => {
+        const duration = originalWaveSurfer.getDuration();
+        const reversedDuration = waveSurfer ? waveSurfer.getDuration() : duration;
+        const start = duration - region.end;
+        const end = duration - region.start;
+        setReversedRegion(start, end);
+        selectedSegment.value = { start, end };
+      });
+      originalRegionsPlugin.on('region-updated', region => {
+        const duration = originalWaveSurfer.getDuration();
+        const reversedDuration = waveSurfer ? waveSurfer.getDuration() : duration;
+        const start = duration - region.end;
+        const end = duration - region.start;
+        setReversedRegion(start, end);
+        selectedSegment.value = { start, end };
+      });
+      originalRegionsPlugin.on('region-removed', region => {
+        selectedSegment.value = null;
+      });
+    }
 
     // Manual click-and-drag region creation for original waveform
     let origDragStart = null;
@@ -398,7 +423,9 @@ const analyzeAudio = async () => {
       snippets: [],
     };
     await nextTick();
-    initializeWaveformAndSpectrogram();
+    setTimeout(() => {
+      initializeWaveformAndSpectrogram();
+    }, 300); // Add a short delay to ensure files are ready
   } catch (err) {
     error.value = 'Failed to process audio: ' + err.message;
   } finally {

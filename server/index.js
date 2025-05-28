@@ -179,8 +179,11 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
     await fs.writeFile(analysisPath, JSON.stringify(analysisData, null, 2));
 
     // Return complete response including full paths
+    // Expose original audio file URL for frontend playback
+    const originalFileName = path.basename(inputPath);
     res.json({
-      reversedAudioUrl: `/outputs/${outputFileName}`,
+      reversedAudioUrl: `/outputs/reversed/${outputFileName}`,
+      originalAudioUrl: `/uploads/${originalFileName}`,
       analysisFile: `/outputs/${path.basename(analysisPath)}`,
       analysisId,
       mfccSummary: mfccFeatures.slice(0, 5),
@@ -190,7 +193,8 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       detectedSegments,
       duration: signal.length / sampleRate,
       sampleRate: sampleRate,
-      fullReversedAudioUrl: `http://localhost:${port}/outputs/${outputFileName}`,
+      fullReversedAudioUrl: `http://localhost:${port}/outputs/reversed/${outputFileName}`,
+      fullOriginalAudioUrl: `http://localhost:${port}/uploads/${originalFileName}`,
     });
   } catch (error) {
     console.error('Error:', error);
@@ -446,6 +450,7 @@ app.get('/api/check-audio/:filename', async (req, res) => {
 });
 
 app.use('/outputs', express.static(outputDir));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.listen(port, () => {
