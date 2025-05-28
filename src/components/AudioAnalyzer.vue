@@ -20,8 +20,14 @@
             <p><strong>Reversed Audio Waveform:</strong></p>
             <div ref="waveform" class="border"></div>
             <div class="mt-2 d-flex align-items-center">
-              <button class="btn btn-secondary me-2" @click="playSelectedSegment" :disabled="!selectedSegment">Play Selected</button>
-              <button class="btn btn-success me-2" @click="saveSegment" :disabled="!selectedSegment">Save Segment</button>
+              <button class="btn btn-secondary me-2" @click="playSelectedSegment" :disabled="!selectedSegment">
+                Play Selected
+                <span v-if="!selectedSegment && (console.log('[Play Selected disabled] selectedSegment:', selectedSegment), false)"></span>
+              </button>
+              <button class="btn btn-success me-2" @click="saveSegment" :disabled="!selectedSegment">
+                Save Segment
+                <span v-if="!selectedSegment && (console.log('[Save Segment disabled] selectedSegment:', selectedSegment), false)"></span>
+              </button>
               <input v-model="segmentAnnotation" class="form-control d-inline-block w-auto me-2" placeholder="Add annotation" />
               <button class="btn btn-info" @click="saveAnnotation" :disabled="!selectedSegment || !segmentAnnotation">Save Annotation</button>
               <select v-model="playbackSpeed" class="form-select w-auto ms-2" @change="updatePlaybackSpeed">
@@ -75,7 +81,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
 import WaveSurfer from 'wavesurfer.js';
-import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
+import RegionsPlugin from 'wavesurfer.js/plugins/regions';
 import p5 from 'p5';
 
 const file = ref(null);
@@ -132,6 +138,8 @@ const initializeWaveformAndSpectrogram = () => {
       cursorColor: '#333',
       barWidth: 2
     });
+    // Debug: print regionsPlugin and its methods
+    console.log('[WaveSurfer/RegionsPlugin]', { waveSurfer, regionsPlugin, regionsPluginKeys: Object.keys(regionsPlugin) });
     waveSurfer.on('ready', () => {
       updatePlaybackSpeed();
     });
@@ -142,31 +150,90 @@ const initializeWaveformAndSpectrogram = () => {
     // Attach region events to the regionsPlugin, not waveSurfer
     if (regionsPlugin) {
       regionsPlugin.on('region-created', region => {
+        console.log('[region-created]', region);
         selectedSegment.value = {
           start: region.start,
           end: region.end
         };
+        console.log('[selectedSegment set]', selectedSegment.value);
         // Remove other regions to allow only one selection at a time
         Object.values(regionsPlugin.regions).forEach(r => {
           if (r.id !== region.id) r.remove();
         });
       });
       regionsPlugin.on('region-updated', region => {
+        console.log('[region-updated]', region);
         selectedSegment.value = {
           start: region.start,
           end: region.end
         };
+        console.log('[selectedSegment updated]', selectedSegment.value);
       });
       regionsPlugin.on('region-removed', region => {
+        console.log('[region-removed]', region);
         if (
           selectedSegment.value &&
           selectedSegment.value.start === region.start &&
           selectedSegment.value.end === region.end
         ) {
           selectedSegment.value = null;
+          console.log('[selectedSegment cleared]');
         }
       });
     }
+
+    // Manual click-and-drag region creation fallback
+    let dragStart = null;
+    let dragRegion = null;
+    const container = waveform.value;
+    const getTimeForEvent = (e) => {
+      const rect = container.getBoundingClientRect();
+      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      const percent = Math.max(0, Math.min(1, x / rect.width));
+      return percent * waveSurfer.getDuration();
+    };
+    const onMouseDown = (e) => {
+      dragStart = getTimeForEvent(e);
+      if (dragRegion) {
+        dragRegion.remove();
+        dragRegion = null;
+      }
+      container.addEventListener('mousemove', onMouseMove);
+      container.addEventListener('touchmove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      document.addEventListener('touchend', onMouseUp);
+    };
+    const onMouseMove = (e) => {
+      if (dragStart == null) return;
+      const dragEnd = getTimeForEvent(e);
+      const start = Math.min(dragStart, dragEnd);
+      const end = Math.max(dragStart, dragEnd);
+      if (dragRegion) dragRegion.remove();
+      dragRegion = regionsPlugin.addRegion({
+        start,
+        end,
+        color: 'rgba(0, 123, 255, 0.2)',
+        drag: false,
+        resize: true,
+      });
+    };
+    const onMouseUp = (e) => {
+      container.removeEventListener('mousemove', onMouseMove);
+      container.removeEventListener('touchmove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('touchend', onMouseUp);
+      if (dragRegion) {
+        selectedSegment.value = {
+          start: dragRegion.start,
+          end: dragRegion.end
+        };
+        dragRegion = null;
+        dragStart = null;
+      }
+    };
+    container.addEventListener('mousedown', onMouseDown);
+    container.addEventListener('touchstart', onMouseDown);
+
     waveSurfer.load(result.value.reversedAudioUrl);
   }
 
