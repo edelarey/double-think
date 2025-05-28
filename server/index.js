@@ -20,18 +20,31 @@ app.use(cors({
   allowedHeaders: ['Content-Type'],
 }));
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${file.fieldname}-${Date.now()}${ext}`);
+    }
+  })
+});
 app.use(express.static(path.join(__dirname, '../dist')));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const outputDir = path.join(__dirname, '../outputs');
+const snippetsDir = path.join(outputDir, 'snippets');
+const reversedDir = path.join(outputDir, 'reversed');
 await fs.mkdir(outputDir, { recursive: true });
+await fs.mkdir(snippetsDir, { recursive: true });
+await fs.mkdir(reversedDir, { recursive: true });
 
 app.post('/api/analyze', upload.single('audio'), async (req, res) => {
   try {
     const inputPath = req.file.path;
-    const outputFileName = `reversed_${Date.now()}.wav`;
-    const outputPath = path.join(outputDir, outputFileName);
+    const ext = path.extname(req.file.originalname) || '.wav';
+    const outputFileName = `reversed_${Date.now()}${ext}`;
+    const outputPath = path.join(reversedDir, outputFileName);
     const analysisId = Date.now();
 
     // Make sure ffmpeg converts to a web-compatible format with explicit format
@@ -147,7 +160,7 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
     // Don't auto-detect segments - start with empty array
     const detectedSegments = [];
 
-    const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
+    const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
     const analysisData = {
       mfcc: mfccFeatures,
       pitch: [],
@@ -156,7 +169,7 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       detectedSegments,
       snippets: [],
       originalAudioPath: inputPath,
-      reversedAudioUrl: `/outputs/${outputFileName}`,
+      reversedAudioUrl: `/outputs/reversed/${outputFileName}`,
       duration: signal.length / sampleRate,
       normalizedEnergyValues,  // Store for redetection
       normalizedFormantShifts, // Store for redetection
@@ -166,9 +179,12 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
     await fs.writeFile(analysisPath, JSON.stringify(analysisData, null, 2));
 
     // Return complete response including full paths
+    // Expose original audio file URL for frontend playback
+    const originalFileName = path.basename(inputPath);
     res.json({
-      reversedAudioUrl: `/outputs/${outputFileName}`,
-      analysisFile: `/outputs/${path.basename(analysisPath)}`,
+      reversedAudioUrl: `/outputs/reversed/${outputFileName}`,
+      originalAudioUrl: `/uploads/${originalFileName}`,
+      analysisFile: `/outputs/reversed/${path.basename(analysisPath)}`,
       analysisId,
       mfccSummary: mfccFeatures.slice(0, 5),
       pitchSummary: [],
@@ -177,7 +193,8 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
       detectedSegments,
       duration: signal.length / sampleRate,
       sampleRate: sampleRate,
-      fullReversedAudioUrl: `http://localhost:${port}/outputs/${outputFileName}`,
+      fullReversedAudioUrl: `http://localhost:${port}/outputs/reversed/${outputFileName}`,
+      fullOriginalAudioUrl: `http://localhost:${port}/uploads/${originalFileName}`,
     });
   } catch (error) {
     console.error('Error:', error);
@@ -255,8 +272,8 @@ app.post('/api/redetect', async (req, res) => {
 app.post('/api/extract-segment', upload.none(), async (req, res) => {
   try {
     const { audioUrl, start, end, analysisId, playbackSpeed } = req.body;
-    const audioPath = path.join(outputDir, path.basename(audioUrl));
-    const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
+    const audioPath = path.join(reversedDir, path.basename(audioUrl));
+    const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
     const analysisData = JSON.parse(await fs.readFile(analysisPath));
     const originalAudioPath = analysisData.originalAudioPath;
 
@@ -268,10 +285,11 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
       return res.status(404).json({ error: 'Audio file not found' });
     }
 
-    const snippetFileName = `snippet_${Date.now()}.wav`;
-    const snippetPath = path.join(outputDir, snippetFileName);
-    const forwardSnippetFileName = `forward_snippet_${Date.now()}.wav`;
-    const forwardSnippetPath = path.join(outputDir, forwardSnippetFileName);
+    const ext = path.extname(audioUrl) || '.wav';
+    const snippetFileName = `snippet_${Date.now()}${ext}`;
+    const snippetPath = path.join(snippetsDir, snippetFileName);
+    const forwardSnippetFileName = `forward_snippet_${Date.now()}${ext}`;
+    const forwardSnippetPath = path.join(snippetsDir, forwardSnippetFileName);
 
     await new Promise((resolve, reject) => {
       ffmpeg(audioPath)
@@ -297,8 +315,8 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
     const snippet = {
       file: snippetFileName,
       forwardFile: forwardSnippetFileName,
-      url: `/outputs/${snippetFileName}`,
-      forwardUrl: `/outputs/${forwardSnippetFileName}`,
+      url: `/outputs/snippets/${snippetFileName}`,
+      forwardUrl: `/outputs/snippets/${forwardSnippetFileName}`,
       start: parseFloat(start),
       end: parseFloat(end),
       annotation: '',
@@ -323,6 +341,12 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
     //   console.warn(`Failed to delete original audio: ${originalAudioPath}`);
     // }
 
+    // Save annotation as JSON file if present
+    if (req.body.annotation) {
+      const annotationPath = path.join(snippetsDir, `${path.parse(snippetFileName).name}.json`);
+      await fs.writeFile(annotationPath, JSON.stringify({ annotation: req.body.annotation }, null, 2));
+    }
+
     res.json(snippet);
   } catch (error) {
     console.error('Error:', error);
@@ -333,7 +357,7 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
 app.post('/api/save-annotation', async (req, res) => {
   try {
     const { analysisId, segmentIndex, annotation, isSnippet } = req.body;
-    const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
+    const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
     const analysisData = JSON.parse(await fs.readFile(analysisPath));
 
     if (isSnippet) {
@@ -352,12 +376,12 @@ app.post('/api/save-annotation', async (req, res) => {
 
 app.get('/api/snippets', async (req, res) => {
   try {
-    const files = await fs.readdir(outputDir);
+    const files = await fs.readdir(reversedDir);
     const analysisFiles = files.filter(file => file.startsWith('analysis_') && file.endsWith('.json'));
     const snippets = [];
 
     for (const analysisFile of analysisFiles) {
-      const analysisPath = path.join(outputDir, analysisFile);
+      const analysisPath = path.join(reversedDir, analysisFile);
       let analysisData;
       try {
         analysisData = JSON.parse(await fs.readFile(analysisPath));
@@ -368,14 +392,14 @@ app.get('/api/snippets', async (req, res) => {
       if (Array.isArray(analysisData.snippets)) {
         for (const snippet of analysisData.snippets) {
           // Check if snippet files exist
-          const snippetPath = path.join(outputDir, snippet.file);
-          const forwardSnippetPath = path.join(outputDir, snippet.forwardFile);
+          const snippetPath = path.join(snippetsDir, snippet.file);
+          const forwardSnippetPath = path.join(snippetsDir, snippet.forwardFile);
           try {
             await fs.access(snippetPath);
             await fs.access(forwardSnippetPath);
             snippets.push({
-              url: `/outputs/${snippet.file}`,
-              forwardUrl: `/outputs/${snippet.forwardFile}`,
+              url: `/outputs/snippets/${snippet.file}`,
+              forwardUrl: `/outputs/snippets/${snippet.forwardFile}`,
               file: snippet.file,
               forwardFile: snippet.forwardFile,
               start: snippet.start,
@@ -426,6 +450,8 @@ app.get('/api/check-audio/:filename', async (req, res) => {
 });
 
 app.use('/outputs', express.static(outputDir));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);

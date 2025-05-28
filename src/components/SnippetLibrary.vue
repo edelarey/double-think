@@ -67,6 +67,7 @@ const fetchSnippets = async () => {
   try {
     loading.value = true;
     const response = await axios.get('http://localhost:3000/api/snippets');
+
     snippets.value = response.data;
     snippetPlaybackSpeeds.value = snippets.value.map(snippet => snippet.playbackSpeed || 1);
   } catch (err) {
