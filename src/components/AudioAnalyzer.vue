@@ -32,6 +32,9 @@
                 Play Selected
                 <span v-if="!selectedSegment && (console.log('[Play Selected disabled] selectedSegment:', selectedSegment), false)"></span>
               </button>
+              <button class="btn btn-outline-danger me-2" @click="clearSelectedRegion" :disabled="!selectedSegment">
+                Clear Selected
+              </button>
               <button class="btn btn-success me-2" @click="saveSegment" :disabled="!selectedSegment">
                 Save Segment
                 <span v-if="!selectedSegment && (console.log('[Save Segment disabled] selectedSegment:', selectedSegment), false)"></span>
@@ -165,18 +168,14 @@ const initializeWaveformAndSpectrogram = () => {
     if (originalRegionsPlugin) {
       originalRegionsPlugin.on('region-created', region => {
         const duration = originalWaveSurfer.getDuration();
-        const reversedDuration = waveSurfer ? waveSurfer.getDuration() : duration;
         const start = duration - region.end;
         const end = duration - region.start;
-        setReversedRegion(start, end);
         selectedSegment.value = { start, end };
       });
       originalRegionsPlugin.on('region-updated', region => {
         const duration = originalWaveSurfer.getDuration();
-        const reversedDuration = waveSurfer ? waveSurfer.getDuration() : duration;
         const start = duration - region.end;
         const end = duration - region.start;
-        setReversedRegion(start, end);
         selectedSegment.value = { start, end };
       });
       originalRegionsPlugin.on('region-removed', region => {
@@ -225,12 +224,16 @@ const initializeWaveformAndSpectrogram = () => {
       document.removeEventListener('mouseup', onOrigMouseUp);
       document.removeEventListener('touchend', onOrigMouseUp);
       if (origDragRegion) {
+        // Clear all regions from both waveforms before adding new
+        if (regionsPlugin) Object.values(regionsPlugin.regions).forEach(r => r.remove());
+        if (originalRegionsPlugin) Object.values(originalRegionsPlugin.regions).forEach(r => r.remove());
         // Map selection to reversed waveform
         const duration = originalWaveSurfer.getDuration();
         const reversedDuration = waveSurfer ? waveSurfer.getDuration() : duration;
         const start = duration - origDragRegion.end;
         const end = duration - origDragRegion.start;
         setReversedRegion(start, end);
+        setOriginalRegion(origDragRegion.start, origDragRegion.end);
         selectedSegment.value = { start, end };
         origDragRegion = null;
         origDragStart = null;
@@ -316,12 +319,16 @@ const initializeWaveformAndSpectrogram = () => {
       document.removeEventListener('mouseup', onMouseUp);
       document.removeEventListener('touchend', onMouseUp);
       if (dragRegion) {
+        // Clear all regions from both waveforms before adding new
+        if (regionsPlugin) Object.values(regionsPlugin.regions).forEach(r => r.remove());
+        if (originalRegionsPlugin) Object.values(originalRegionsPlugin.regions).forEach(r => r.remove());
         // Map selection to original waveform
         const duration = waveSurfer.getDuration();
         const originalDuration = originalWaveSurfer ? originalWaveSurfer.getDuration() : duration;
         const start = originalDuration - dragRegion.end;
         const end = originalDuration - dragRegion.start;
         setOriginalRegion(start, end);
+        setReversedRegion(dragRegion.start, dragRegion.end);
         selectedSegment.value = { start: dragRegion.start, end: dragRegion.end };
         dragRegion = null;
         dragStart = null;
@@ -449,6 +456,12 @@ const playSelectedSegment = (which = 'reversed') => {
     originalWaveSurfer.play(start, end);
   }
 };
+
+function clearSelectedRegion() {
+  if (regionsPlugin) Object.values(regionsPlugin.regions).forEach(r => r.remove());
+  if (originalRegionsPlugin) Object.values(originalRegionsPlugin.regions).forEach(r => r.remove());
+  selectedSegment.value = null;
+}
 
 const saveSegment = async () => {
   if (!selectedSegment.value) return;
