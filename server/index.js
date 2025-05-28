@@ -160,7 +160,7 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
     // Don't auto-detect segments - start with empty array
     const detectedSegments = [];
 
-    const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
+    const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
     const analysisData = {
       mfcc: mfccFeatures,
       pitch: [],
@@ -184,7 +184,7 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
     res.json({
       reversedAudioUrl: `/outputs/reversed/${outputFileName}`,
       originalAudioUrl: `/uploads/${originalFileName}`,
-      analysisFile: `/outputs/${path.basename(analysisPath)}`,
+      analysisFile: `/outputs/reversed/${path.basename(analysisPath)}`,
       analysisId,
       mfccSummary: mfccFeatures.slice(0, 5),
       pitchSummary: [],
@@ -273,7 +273,7 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
   try {
     const { audioUrl, start, end, analysisId, playbackSpeed } = req.body;
     const audioPath = path.join(reversedDir, path.basename(audioUrl));
-    const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
+    const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
     const analysisData = JSON.parse(await fs.readFile(analysisPath));
     const originalAudioPath = analysisData.originalAudioPath;
 
@@ -357,7 +357,7 @@ app.post('/api/extract-segment', upload.none(), async (req, res) => {
 app.post('/api/save-annotation', async (req, res) => {
   try {
     const { analysisId, segmentIndex, annotation, isSnippet } = req.body;
-    const analysisPath = path.join(outputDir, `analysis_${analysisId}.json`);
+    const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
     const analysisData = JSON.parse(await fs.readFile(analysisPath));
 
     if (isSnippet) {
@@ -376,12 +376,12 @@ app.post('/api/save-annotation', async (req, res) => {
 
 app.get('/api/snippets', async (req, res) => {
   try {
-    const files = await fs.readdir(outputDir);
+    const files = await fs.readdir(reversedDir);
     const analysisFiles = files.filter(file => file.startsWith('analysis_') && file.endsWith('.json'));
     const snippets = [];
 
     for (const analysisFile of analysisFiles) {
-      const analysisPath = path.join(outputDir, analysisFile);
+      const analysisPath = path.join(reversedDir, analysisFile);
       let analysisData;
       try {
         analysisData = JSON.parse(await fs.readFile(analysisPath));
@@ -392,14 +392,14 @@ app.get('/api/snippets', async (req, res) => {
       if (Array.isArray(analysisData.snippets)) {
         for (const snippet of analysisData.snippets) {
           // Check if snippet files exist
-          const snippetPath = path.join(outputDir, snippet.file);
-          const forwardSnippetPath = path.join(outputDir, snippet.forwardFile);
+          const snippetPath = path.join(snippetsDir, snippet.file);
+          const forwardSnippetPath = path.join(snippetsDir, snippet.forwardFile);
           try {
             await fs.access(snippetPath);
             await fs.access(forwardSnippetPath);
             snippets.push({
-              url: `/outputs/${snippet.file}`,
-              forwardUrl: `/outputs/${snippet.forwardFile}`,
+              url: `/outputs/snippets/${snippet.file}`,
+              forwardUrl: `/outputs/snippets/${snippet.forwardFile}`,
               file: snippet.file,
               forwardFile: snippet.forwardFile,
               start: snippet.start,
