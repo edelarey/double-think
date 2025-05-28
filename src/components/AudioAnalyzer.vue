@@ -458,9 +458,19 @@ const playSelectedSegment = (which = 'reversed') => {
 };
 
 function clearSelectedRegion() {
-  if (regionsPlugin) Object.values(regionsPlugin.regions).forEach(r => r.remove());
-  if (originalRegionsPlugin) Object.values(originalRegionsPlugin.regions).forEach(r => r.remove());
+  if (waveSurfer) {
+    waveSurfer.destroy();
+    waveSurfer = null;
+  }
+  if (originalWaveSurfer) {
+    originalWaveSurfer.destroy();
+    originalWaveSurfer = null;
+  }
   selectedSegment.value = null;
+  // Re-initialize both waveforms with no regions
+  setTimeout(() => {
+    initializeWaveformAndSpectrogram();
+  }, 100);
 }
 
 const saveSegment = async () => {
