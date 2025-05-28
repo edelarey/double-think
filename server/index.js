@@ -446,6 +446,7 @@ app.get('/api/check-audio/:filename', async (req, res) => {
 });
 
 app.use('/outputs', express.static(outputDir));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
