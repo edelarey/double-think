@@ -11,6 +11,9 @@
       <li class="nav-item">
         <button class="nav-link" :class="{ active: activeTab === 'snippets' }" @click="activeTab = 'snippets'; $router.push('/snippets')">Snippet Library</button>
       </li>
+      <li class="nav-item">
+        <button class="nav-link" :class="{ active: activeTab === 'outputs' }" @click="activeTab = 'outputs'; $router.push('/outputs')">Output Browser</button>
+      </li>
     </ul>
     <div class="tab-content mt-3">
       <router-view></router-view>
@@ -29,5 +32,6 @@ watch(() => router.currentRoute.value.path, (newPath) => {
   if (newPath === '/file') activeTab.value = 'file';
   else if (newPath === '/realtime') activeTab.value = 'realtime';
   else if (newPath === '/snippets') activeTab.value = 'snippets';
+  else if (newPath === '/outputs') activeTab.value = 'outputs';
 });
 </script>

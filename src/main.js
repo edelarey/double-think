@@ -7,6 +7,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import AudioAnalyzer from './components/AudioAnalyzer.vue';
 import RealTimeAnalyzer from './components/RealTimeAnalyzer.vue';
 import SnippetLibrary from './components/SnippetLibrary.vue';
+import OutputBrowser from './components/OutputBrowser.vue';
 
 Chart.register(...registerables);
 
@@ -15,6 +16,7 @@ const routes = [
   { path: '/file', component: AudioAnalyzer },
   { path: '/realtime', component: RealTimeAnalyzer },
   { path: '/snippets', component: SnippetLibrary },
+  { path: '/outputs', component: OutputBrowser },
 ];
 
 const router = createRouter({

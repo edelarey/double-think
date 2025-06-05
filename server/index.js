@@ -32,7 +32,11 @@ const upload = multer({
 app.use(express.static(path.join(__dirname, '../dist')));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Serve static files from the 'outputs' directory
 const outputDir = path.join(__dirname, '../outputs');
+app.use('/outputs', express.static(outputDir));
+
 const snippetsDir = path.join(outputDir, 'snippets');
 const reversedDir = path.join(outputDir, 'reversed');
 await fs.mkdir(outputDir, { recursive: true });
@@ -473,6 +477,45 @@ app.delete('/api/snippets', async (req, res) => {
   } catch (error) {
     console.error('Error deleting snippet:', error);
     res.status(500).json({ error: 'Failed to delete snippet' });
+  }
+});
+
+// Endpoint to list files in the reversed directory
+app.get('/api/outputs/reversed', async (req, res) => {
+  try {
+    const files = await fs.readdir(reversedDir);
+    const audioFiles = files
+      .filter(file => /\.(wav|mp3|ogg|aac|flac|m4a)$/i.test(file)) // Filter for common audio extensions
+      .map(file => ({
+        file: file,
+        url: `/outputs/reversed/${file}`, // URL for the client to access the file
+        fullUrl: `http://localhost:${port}/outputs/reversed/${file}` // Full URL for WaveSurfer
+      }));
+    res.json(audioFiles);
+  } catch (error) {
+    console.error('Error listing reversed outputs:', error);
+    res.status(500).json({ error: 'Failed to list reversed outputs', details: error.message });
+  }
+});
+
+// Endpoint to delete a file from the reversed directory
+app.delete('/api/outputs/reversed', async (req, res) => {
+  try {
+    const { file } = req.body;
+    if (!file) {
+      return res.status(400).json({ error: 'Missing file name' });
+    }
+    const filePath = path.join(reversedDir, file);
+    try {
+      await fs.access(filePath); // Check if file exists
+    } catch (err) {
+      return res.status(404).json({ error: 'File not found', details: `File ${file} does not exist in ${reversedDir}` });
+    }
+    await fs.unlink(filePath);
+    res.json({ success: true, message: `File ${file} deleted successfully.` });
+  } catch (error) {
+    console.error('Error deleting reversed output:', error);
+    res.status(500).json({ error: 'Failed to delete reversed output', details: error.message });
   }
 });
 
