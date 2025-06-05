@@ -37,7 +37,15 @@
               <p><strong>Forward Audio:</strong></p>
               <audio :ref="el => snippetForwardAudios[index] = el" :src="snippet.forwardUrl" controls class="w-100 mb-2"></audio>
               <a :href="snippet.url" download class="btn btn-outline-secondary btn-sm me-2">Download Reverse</a>
-              <a :href="snippet.forwardUrl" download class="btn btn-outline-secondary btn-sm">Download Forward</a>
+              <a :href="snippet.forwardUrl" download class="btn btn-outline-secondary btn-sm me-2">Download Forward</a>
+              <button
+                class="btn btn-outline-danger btn-sm"
+                :disabled="deletingIndexes[index]"
+                @click="deleteSnippet(index)"
+              >
+                <span v-if="deletingIndexes[index]" class="spinner-border spinner-border-sm me-1"></span>
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -60,6 +68,7 @@ const forwardWaveforms = ref([]);
 const snippetAudios = ref([]);
 const snippetForwardAudios = ref([]);
 const snippetPlaybackSpeeds = ref([]);
+const deletingIndexes = ref({});
 let waveSurfers = [];
 let forwardWaveSurfers = [];
 
@@ -133,6 +142,49 @@ onMounted(async () => {
     }
   });
 });
+
+/**
+ * Delete a snippet by index.
+ * Uses file, start, and end as identifiers.
+ */
+const deleteSnippet = async (index) => {
+  const snippet = snippets.value[index];
+  deletingIndexes.value = { ...deletingIndexes.value, [index]: true };
+  error.value = null;
+  try {
+    await axios.delete('http://localhost:3000/api/snippets', {
+      data: {
+        analysisId: snippet.analysisId,
+        file: snippet.file,
+        forwardFile: snippet.forwardFile,
+        start: snippet.start,
+        end: snippet.end,
+      },
+    });
+    // Remove from local arrays
+    snippets.value.splice(index, 1);
+    snippetPlaybackSpeeds.value.splice(index, 1);
+    // Clean up waveform and audio refs
+    if (waveSurfers[index]) {
+      waveSurfers[index].destroy();
+      waveSurfers.splice(index, 1);
+    }
+    if (forwardWaveSurfers[index]) {
+      forwardWaveSurfers[index].destroy();
+      forwardWaveSurfers.splice(index, 1);
+    }
+    waveforms.value.splice(index, 1);
+    forwardWaveforms.value.splice(index, 1);
+    snippetAudios.value.splice(index, 1);
+    snippetForwardAudios.value.splice(index, 1);
+    // Remove loading state
+    const { [index]: _, ...rest } = deletingIndexes.value;
+    deletingIndexes.value = rest;
+  } catch (err) {
+    error.value = 'Failed to delete snippet: ' + err.message;
+    deletingIndexes.value = { ...deletingIndexes.value, [index]: false };
+  }
+};
 
 onUnmounted(() => {
   waveSurfers.forEach(waveSurfer => waveSurfer && waveSurfer.destroy());

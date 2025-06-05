@@ -16,7 +16,7 @@ const port = 3000;
 
 app.use(cors({
   origin: 'http://localhost:5173',
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'DELETE'],
   allowedHeaders: ['Content-Type'],
 }));
 
@@ -419,6 +419,60 @@ app.get('/api/snippets', async (req, res) => {
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Failed to list snippets' });
+  }
+});
+
+/**
+ * Delete a snippet by analysisId, file, forwardFile, start, and end.
+ */
+app.delete('/api/snippets', async (req, res) => {
+  try {
+    const { analysisId, file, forwardFile, start, end } = req.body;
+    if (!analysisId || !file || !forwardFile || typeof start === 'undefined' || typeof end === 'undefined') {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
+    let analysisData;
+    try {
+      analysisData = JSON.parse(await fs.readFile(analysisPath));
+    } catch (err) {
+      return res.status(404).json({ error: 'Analysis file not found' });
+    }
+    if (!Array.isArray(analysisData.snippets)) {
+      return res.status(404).json({ error: 'No snippets found in analysis file' });
+    }
+    // Find the snippet index
+    const snippetIndex = analysisData.snippets.findIndex(
+      s =>
+        s.file === file &&
+        s.forwardFile === forwardFile &&
+        parseFloat(s.start) === parseFloat(start) &&
+        parseFloat(s.end) === parseFloat(end)
+    );
+    if (snippetIndex === -1) {
+      return res.status(404).json({ error: 'Snippet not found' });
+    }
+    // Remove from array
+    const [removed] = analysisData.snippets.splice(snippetIndex, 1);
+    // Save updated analysis file
+    await fs.writeFile(analysisPath, JSON.stringify(analysisData, null, 2));
+    // Delete snippet files
+    const snippetPath = path.join(snippetsDir, file);
+    const forwardSnippetPath = path.join(snippetsDir, forwardFile);
+    try {
+      await fs.unlink(snippetPath);
+    } catch (err) {
+      // Ignore if file doesn't exist
+    }
+    try {
+      await fs.unlink(forwardSnippetPath);
+    } catch (err) {
+      // Ignore if file doesn't exist
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting snippet:', error);
+    res.status(500).json({ error: 'Failed to delete snippet' });
   }
 });
 
