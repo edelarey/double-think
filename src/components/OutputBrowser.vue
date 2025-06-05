@@ -14,6 +14,19 @@
           <div v-for="(output, index) in outputs" :key="index" class="card mb-3">
             <div class="card-body">
               <h5 class="card-title">Output File: {{ output.file }}</h5>
+              <div v-if="output.originalFileName" class="mb-2">
+                <p>
+                  <strong>Original File:</strong>
+                  {{ output.originalFileName }}
+                </p>
+                <audio
+                  v-if="output.originalAudioUrl"
+                  :src="output.originalAudioUrl"
+                  controls
+                  class="w-100 mb-2"
+                  :ref="el => originalAudios[index] = el"
+                ></audio>
+              </div>
               <div class="mb-3">
                 <label :for="'playbackSpeed' + index" class="form-label">Adjust Playback Speed</label>
                 <select v-model="outputPlaybackSpeeds[index]" :id="'playbackSpeed' + index" class="form-select w-auto" @change="updateOutputPlaybackSpeed(index)">
@@ -56,6 +69,7 @@ const loading = ref(true);
 const error = ref(null);
 const waveforms = ref([]);
 const outputAudios = ref([]);
+const originalAudios = ref([]);
 const outputPlaybackSpeeds = ref([]);
 const deletingIndexes = ref({});
 let waveSurfers = [];
@@ -64,13 +78,50 @@ const fetchOutputs = async () => {
   try {
     loading.value = true;
     error.value = null;
-    // Assuming API endpoint will be '/api/outputs/reversed'
     const response = await axios.get('http://localhost:3000/api/outputs/reversed');
-    outputs.value = response.data;
-    outputPlaybackSpeeds.value = outputs.value.map(() => 1); // Default playback speed 1x
+    // For each output, fetch its associated JSON metadata
+    const outputList = response.data;
+    await Promise.all(
+      outputList.map(async (output) => {
+        // Try to find the associated analysis JSON file
+        // The convention is: reversed file = reversed_xxx.wav, JSON = analysis_xxx.json
+        const match = output.file.match(/^reversed_(\d+)\./);
+        if (match) {
+          const analysisId = match[1];
+          const jsonUrl = `/outputs/reversed/analysis_${analysisId}.json`;
+          try {
+            const metaResp = await axios.get(jsonUrl);
+            // Try to get the original file name and a playable URL
+            let originalFileName = '';
+            let originalAudioUrl = '';
+            if (metaResp.data.originalAudioPath) {
+              // Only use the file name for display
+              originalFileName = metaResp.data.originalAudioPath.split('/').pop();
+              // Try to construct a URL for playback
+              // If originalAudioUrl is present, use it; else, try to guess from uploads
+              if (metaResp.data.originalAudioUrl) {
+                originalAudioUrl = metaResp.data.originalAudioUrl;
+              } else if (originalFileName) {
+                originalAudioUrl = `/uploads/${originalFileName}`;
+              }
+            }
+            output.originalFileName = originalFileName;
+            output.originalAudioUrl = originalAudioUrl;
+          } catch (e) {
+            output.originalFileName = '';
+            output.originalAudioUrl = '';
+          }
+        } else {
+          output.originalFileName = '';
+          output.originalAudioUrl = '';
+        }
+      })
+    );
+    outputs.value = outputList;
+    outputPlaybackSpeeds.value = outputs.value.map(() => 1);
   } catch (err) {
     error.value = 'Failed to load outputs: ' + (err.response?.data?.message || err.message);
-    outputs.value = []; // Clear outputs on error
+    outputs.value = [];
   } finally {
     loading.value = false;
   }
@@ -84,29 +135,29 @@ const updateOutputPlaybackSpeed = (index) => {
   if (outputAudios.value[index]) {
     outputAudios.value[index].playbackRate = speed;
   }
+  if (originalAudios.value[index]) {
+    originalAudios.value[index].playbackRate = speed;
+  }
 };
 
 onMounted(async () => {
   await fetchOutputs();
-  
-  await nextTick(); // Ensure DOM elements are available
-
+  await nextTick();
   outputs.value.forEach((output, index) => {
     if (waveforms.value[index] && output.url) {
       try {
         const waveSurfer = WaveSurfer.create({
           container: waveforms.value[index],
-          waveColor: '#6c757d', // Bootstrap secondary color
-          progressColor: '#495057', // Darker gray
+          waveColor: '#6c757d',
+          progressColor: '#495057',
           height: 100,
-          url: output.url, // Pass URL directly
+          url: output.url,
         });
         waveSurfer.on('ready', () => {
           waveSurfer.setPlaybackRate(outputPlaybackSpeeds.value[index] || 1);
         });
         waveSurfer.on('error', (err) => {
           console.error(`WaveSurfer error for ${output.file}:`, err);
-          // Optionally display a message to the user in the waveform container
           if (waveforms.value[index]) {
             waveforms.value[index].innerHTML = `<p class="text-danger small">Error loading waveform: ${err.message}</p>`;
           }
@@ -114,14 +165,17 @@ onMounted(async () => {
         waveSurfers[index] = waveSurfer;
       } catch (e) {
         console.error(`Failed to initialize WaveSurfer for ${output.file}:`, e);
-         if (waveforms.value[index]) {
-            waveforms.value[index].innerHTML = `<p class="text-danger small">Could not initialize waveform player.</p>`;
-          }
+        if (waveforms.value[index]) {
+          waveforms.value[index].innerHTML = `<p class="text-danger small">Could not initialize waveform player.</p>`;
+        }
       }
     }
     // Set initial audio playback speeds
     if (outputAudios.value[index]) {
       outputAudios.value[index].playbackRate = outputPlaybackSpeeds.value[index] || 1;
+    }
+    if (originalAudios.value[index]) {
+      originalAudios.value[index].playbackRate = outputPlaybackSpeeds.value[index] || 1;
     }
   });
 });
@@ -131,44 +185,32 @@ const deleteOutput = async (index) => {
   deletingIndexes.value = { ...deletingIndexes.value, [index]: true };
   error.value = null;
   try {
-    // Assuming API endpoint will be '/api/outputs/reversed/:filename' or similar
-    // For now, we'll use a body to pass the filename, similar to snippets
     await axios.delete('http://localhost:3000/api/outputs/reversed', {
       data: {
-        file: outputToDelete.file, // Send the filename to be deleted
+        file: outputToDelete.file,
       },
     });
-    // Remove from local arrays
     outputs.value.splice(index, 1);
     outputPlaybackSpeeds.value.splice(index, 1);
-    
+
     if (waveSurfers[index]) {
       waveSurfers[index].destroy();
     }
     waveSurfers.splice(index, 1);
-    
-    // Adjust refs arrays
+
     waveforms.value.splice(index, 1);
     outputAudios.value.splice(index, 1);
+    originalAudios.value.splice(index, 1);
 
-    // Re-index waveSurfers to match the new outputs array indices
-    // This is tricky because splice shifts indices. A better way might be to map by a unique ID if available.
-    // For now, we'll re-initialize them on next fetch or handle carefully.
-    // The simplest for now is to ensure waveSurfers array is also spliced correctly.
-
+    if (outputs.value.length === 0) {
+      waveSurfers.forEach(ws => ws && ws.destroy());
+      waveSurfers = [];
+    }
   } catch (err) {
     error.value = 'Failed to delete output: ' + (err.response?.data?.message || err.message);
   } finally {
-    // Remove loading state for this specific index
     const { [index]: _, ...rest } = deletingIndexes.value;
     deletingIndexes.value = rest;
-     // If the last item was deleted, and it was the only one, WaveSurfer might have issues.
-    // We might need to re-fetch or re-initialize if all items are gone.
-    if (outputs.value.length === 0) {
-        // Optionally clear all waveSurfers if no outputs remain
-        waveSurfers.forEach(ws => ws && ws.destroy());
-        waveSurfers = [];
-    }
   }
 };
 
@@ -181,12 +223,12 @@ onUnmounted(() => {
 <style scoped>
 .border {
   min-height: 100px;
-  background-color: #f8f9fa; /* Light background for waveform container */
+  background-color: #f8f9fa;
 }
 .form-select.w-auto {
   width: 100px;
 }
 .card-title {
-  word-break: break-all; /* Ensure long filenames don't break layout */
+  word-break: break-all;
 }
 </style>

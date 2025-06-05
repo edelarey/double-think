@@ -506,13 +506,45 @@ app.delete('/api/outputs/reversed', async (req, res) => {
       return res.status(400).json({ error: 'Missing file name' });
     }
     const filePath = path.join(reversedDir, file);
+
+    // Try to find and delete the associated original file
+    let originalFileDeleted = false;
+    let originalFileName = '';
+    try {
+      // Match reversed_<id>.<ext>
+      const match = file.match(/^reversed_(\d+)\./);
+      if (match) {
+        const analysisId = match[1];
+        const analysisPath = path.join(reversedDir, `analysis_${analysisId}.json`);
+        const analysisData = JSON.parse(await fs.readFile(analysisPath));
+        if (analysisData.originalAudioPath) {
+          originalFileName = analysisData.originalAudioPath.split('/').pop();
+          const uploadsDir = path.join(__dirname, '../uploads');
+          const originalFilePath = path.join(uploadsDir, originalFileName);
+          try {
+            await fs.unlink(originalFilePath);
+            originalFileDeleted = true;
+          } catch (err) {
+            // File may not exist, ignore error
+          }
+        }
+      }
+    } catch (err) {
+      // Ignore errors in finding/deleting original file
+    }
+
     try {
       await fs.access(filePath); // Check if file exists
     } catch (err) {
       return res.status(404).json({ error: 'File not found', details: `File ${file} does not exist in ${reversedDir}` });
     }
     await fs.unlink(filePath);
-    res.json({ success: true, message: `File ${file} deleted successfully.` });
+    res.json({
+      success: true,
+      message: `File ${file} deleted successfully.`,
+      originalFileDeleted,
+      originalFileName
+    });
   } catch (error) {
     console.error('Error deleting reversed output:', error);
     res.status(500).json({ error: 'Failed to delete reversed output', details: error.message });
