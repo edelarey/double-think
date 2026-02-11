@@ -953,10 +953,11 @@ app.delete('/api/markers/:markerId', async (req, res) => {
 
 /**
  * Extract a snippet from a video's reversed audio
+ * Supports both audio-only and video snippets based on 'includeVideo' flag
  */
 app.post('/api/extract-video-snippet', async (req, res) => {
   try {
-    const { analysisId, start, end, playbackSpeed, annotation, name } = req.body;
+    const { analysisId, start, end, playbackSpeed, annotation, name, includeVideo } = req.body;
     
     if (!analysisId || start === undefined || end === undefined) {
       return res.status(400).json({ error: 'Missing required fields: analysisId, start, end' });
@@ -971,53 +972,105 @@ app.post('/api/extract-video-snippet', async (req, res) => {
     }
     
     const timestamp = Date.now();
-    const snippetFileName = `video_snippet_${timestamp}.wav`;
-    const forwardSnippetFileName = `video_snippet_forward_${timestamp}.wav`;
-    const snippetPath = path.join(snippetsDir, snippetFileName);
-    const forwardSnippetPath = path.join(snippetsDir, forwardSnippetFileName);
-    
     const duration = parseFloat(end) - parseFloat(start);
     
-    // Extract reversed audio snippet
-    await new Promise((resolve, reject) => {
-      ffmpeg(analysisData.reversedAudioPath)
-        .setStartTime(parseFloat(start))
-        .setDuration(duration)
-        .audioCodec('pcm_s16le')
-        .format('wav')
-        .output(snippetPath)
-        .on('end', resolve)
-        .on('error', reject)
-        .run();
-    });
+    let snippet;
     
-    // Extract forward (original) audio snippet
-    await new Promise((resolve, reject) => {
-      ffmpeg(analysisData.extractedAudioPath)
-        .setStartTime(parseFloat(start))
-        .setDuration(duration)
-        .audioCodec('pcm_s16le')
-        .format('wav')
-        .output(forwardSnippetPath)
-        .on('end', resolve)
-        .on('error', reject)
-        .run();
-    });
-    
-    const snippet = {
-      id: `snippet_${timestamp}`,
-      name: name || '',
-      file: snippetFileName,
-      forwardFile: forwardSnippetFileName,
-      url: `/outputs/snippets/${snippetFileName}`,
-      forwardUrl: `/outputs/snippets/${forwardSnippetFileName}`,
-      start: parseFloat(start),
-      end: parseFloat(end),
-      duration,
-      playbackSpeed: parseFloat(playbackSpeed) || 1,
-      annotation: annotation || '',
-      createdAt: new Date().toISOString()
-    };
+    if (includeVideo) {
+      // Extract video snippets with audio
+      const reversedVideoSnippetFileName = `video_clip_reversed_${timestamp}.mp4`;
+      const forwardVideoSnippetFileName = `video_clip_forward_${timestamp}.mp4`;
+      const reversedVideoSnippetPath = path.join(snippetsDir, reversedVideoSnippetFileName);
+      const forwardVideoSnippetPath = path.join(snippetsDir, forwardVideoSnippetFileName);
+      
+      // Extract reversed video snippet (original video + segment-reversed audio)
+      await new Promise((resolve, reject) => {
+        ffmpeg(analysisData.reversedVideoPath)
+          .setStartTime(parseFloat(start))
+          .setDuration(duration)
+          .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+          .output(reversedVideoSnippetPath)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // Extract forward video snippet (original video + original audio)
+      await new Promise((resolve, reject) => {
+        ffmpeg(analysisData.originalVideoPath)
+          .setStartTime(parseFloat(start))
+          .setDuration(duration)
+          .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+          .output(forwardVideoSnippetPath)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      snippet = {
+        id: `snippet_${timestamp}`,
+        name: name || '',
+        type: 'video',
+        file: reversedVideoSnippetFileName,
+        forwardFile: forwardVideoSnippetFileName,
+        url: `/outputs/snippets/${reversedVideoSnippetFileName}`,
+        forwardUrl: `/outputs/snippets/${forwardVideoSnippetFileName}`,
+        start: parseFloat(start),
+        end: parseFloat(end),
+        duration,
+        playbackSpeed: parseFloat(playbackSpeed) || 1,
+        annotation: annotation || '',
+        createdAt: new Date().toISOString()
+      };
+    } else {
+      // Extract audio-only snippets (original behavior)
+      const snippetFileName = `video_snippet_${timestamp}.wav`;
+      const forwardSnippetFileName = `video_snippet_forward_${timestamp}.wav`;
+      const snippetPath = path.join(snippetsDir, snippetFileName);
+      const forwardSnippetPath = path.join(snippetsDir, forwardSnippetFileName);
+      
+      // Extract reversed audio snippet
+      await new Promise((resolve, reject) => {
+        ffmpeg(analysisData.reversedAudioPath)
+          .setStartTime(parseFloat(start))
+          .setDuration(duration)
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(snippetPath)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // Extract forward (original) audio snippet
+      await new Promise((resolve, reject) => {
+        ffmpeg(analysisData.extractedAudioPath)
+          .setStartTime(parseFloat(start))
+          .setDuration(duration)
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(forwardSnippetPath)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      snippet = {
+        id: `snippet_${timestamp}`,
+        name: name || '',
+        type: 'audio',
+        file: snippetFileName,
+        forwardFile: forwardSnippetFileName,
+        url: `/outputs/snippets/${snippetFileName}`,
+        forwardUrl: `/outputs/snippets/${forwardSnippetFileName}`,
+        start: parseFloat(start),
+        end: parseFloat(end),
+        duration,
+        playbackSpeed: parseFloat(playbackSpeed) || 1,
+        annotation: annotation || '',
+        createdAt: new Date().toISOString()
+      };
+    }
     
     analysisData.snippets = analysisData.snippets || [];
     analysisData.snippets.push(snippet);
@@ -1159,6 +1212,181 @@ app.get('/api/video-snippets', async (req, res) => {
   } catch (error) {
     console.error('Error listing video snippets:', error);
     res.status(500).json({ error: 'Failed to list video snippets: ' + error.message });
+  }
+});
+
+/**
+ * Stitch reversed and forward snippets together with individual speeds
+ * Returns a downloadable file (video or audio)
+ */
+app.post('/api/stitch-snippet', async (req, res) => {
+  try {
+    const { snippetId, analysisId, reversedSpeed, forwardSpeed, type } = req.body;
+    
+    if (!snippetId || !analysisId) {
+      return res.status(400).json({ error: 'Missing required fields: snippetId, analysisId' });
+    }
+    
+    // Load analysis to find snippet
+    const analysisPath = path.join(videosDir, `${analysisId}.json`);
+    let analysisData;
+    try {
+      analysisData = JSON.parse(await fs.readFile(analysisPath));
+    } catch {
+      return res.status(404).json({ error: 'Video analysis not found' });
+    }
+    
+    const snippet = analysisData.snippets?.find(s => s.id === snippetId);
+    if (!snippet) {
+      return res.status(404).json({ error: 'Snippet not found' });
+    }
+    
+    const reversedFilePath = path.join(snippetsDir, snippet.file);
+    const forwardFilePath = path.join(snippetsDir, snippet.forwardFile);
+    
+    // Verify files exist
+    try {
+      await fs.access(reversedFilePath);
+      await fs.access(forwardFilePath);
+    } catch {
+      return res.status(404).json({ error: 'Snippet files not found' });
+    }
+    
+    const timestamp = Date.now();
+    const isVideo = type === 'video';
+    const ext = isVideo ? 'mp4' : 'wav';
+    const outputFilename = `stitched_${timestamp}.${ext}`;
+    const outputPath = path.join(snippetsDir, outputFilename);
+    
+    // Temporary files for speed-adjusted clips
+    const tempReversed = path.join(snippetsDir, `temp_rev_${timestamp}.${ext}`);
+    const tempForward = path.join(snippetsDir, `temp_fwd_${timestamp}.${ext}`);
+    
+    // Apply speed to reversed clip
+    const revSpeed = parseFloat(reversedSpeed) || 1;
+    const fwdSpeed = parseFloat(forwardSpeed) || 1;
+    
+    // Speed adjustment using FFmpeg
+    // For video: setpts for video, atempo for audio
+    // For audio-only: atempo filter
+    
+    if (isVideo) {
+      // Adjust reversed video speed
+      await new Promise((resolve, reject) => {
+        ffmpeg(reversedFilePath)
+          .videoFilters(`setpts=${1/revSpeed}*PTS`)
+          .audioFilters(`atempo=${revSpeed}`)
+          .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+          .output(tempReversed)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // Adjust forward video speed
+      await new Promise((resolve, reject) => {
+        ffmpeg(forwardFilePath)
+          .videoFilters(`setpts=${1/fwdSpeed}*PTS`)
+          .audioFilters(`atempo=${fwdSpeed}`)
+          .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+          .output(tempForward)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // Concatenate the two clips
+      // Create a concat file
+      const concatFile = path.join(snippetsDir, `concat_${timestamp}.txt`);
+      await fs.writeFile(concatFile, `file '${tempReversed}'\nfile '${tempForward}'`);
+      
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(concatFile)
+          .inputOptions(['-f', 'concat', '-safe', '0'])
+          .outputOptions(['-c', 'copy'])
+          .output(outputPath)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // Cleanup concat file
+      await fs.unlink(concatFile).catch(() => {});
+    } else {
+      // Audio-only processing
+      // atempo only supports 0.5-2.0, chain filters if needed
+      const getAtempoFilters = (speed) => {
+        const filters = [];
+        let s = speed;
+        while (s > 2.0) {
+          filters.push('atempo=2.0');
+          s /= 2.0;
+        }
+        while (s < 0.5) {
+          filters.push('atempo=0.5');
+          s /= 0.5;
+        }
+        filters.push(`atempo=${s}`);
+        return filters.join(',');
+      };
+      
+      // Adjust reversed audio speed
+      await new Promise((resolve, reject) => {
+        ffmpeg(reversedFilePath)
+          .audioFilters(getAtempoFilters(revSpeed))
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(tempReversed)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // Adjust forward audio speed
+      await new Promise((resolve, reject) => {
+        ffmpeg(forwardFilePath)
+          .audioFilters(getAtempoFilters(fwdSpeed))
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(tempForward)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // Concatenate audio files
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(tempReversed)
+          .input(tempForward)
+          .complexFilter(['[0:a][1:a]concat=n=2:v=0:a=1[out]'])
+          .outputOptions(['-map', '[out]'])
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(outputPath)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+    }
+    
+    // Cleanup temp files
+    await fs.unlink(tempReversed).catch(() => {});
+    await fs.unlink(tempForward).catch(() => {});
+    
+    // Send the stitched file
+    res.download(outputPath, outputFilename, async (err) => {
+      if (err) {
+        console.error('Error sending stitched file:', err);
+      }
+      // Cleanup output file after download
+      await fs.unlink(outputPath).catch(() => {});
+    });
+    
+  } catch (error) {
+    console.error('Error stitching snippet:', error);
+    res.status(500).json({ error: 'Failed to stitch snippet: ' + error.message });
   }
 });
 

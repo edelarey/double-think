@@ -227,43 +227,152 @@
           <h5>Saved Snippets</h5>
           <div class="row">
             <div v-for="snippet in snippets" :key="snippet.id" class="col-md-6 mb-3">
-              <div class="card">
+              <div class="card snippet-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <div>
+                    <span class="badge" :class="snippet.type === 'video' ? 'bg-primary' : 'bg-info'">
+                      {{ snippet.type === 'video' ? '🎬 Video' : '🎵 Audio' }}
+                    </span>
+                    <strong class="ms-2">{{ snippet.name || 'Unnamed' }}</strong>
+                  </div>
+                  <span class="badge bg-secondary">{{ formatTime(snippet.start) }} - {{ formatTime(snippet.end) }}</span>
+                </div>
                 <div class="card-body">
-                  <h6 class="card-title">
-                    Snippet: {{ formatTime(snippet.start) }} - {{ formatTime(snippet.end) }}
-                    <span class="badge bg-secondary ms-2">{{ snippet.playbackSpeed }}x</span>
-                  </h6>
-                  
-                  <div class="mb-2">
-                    <label class="form-label small">Reversed Audio:</label>
-                    <audio :src="snippet.url" controls class="w-100"></audio>
-                  </div>
-                  
-                  <div class="mb-2">
-                    <label class="form-label small">Forward Audio:</label>
-                    <audio :src="snippet.forwardUrl" controls class="w-100"></audio>
-                  </div>
-                  
-                  <div class="mb-2">
-                    <label class="form-label small">Annotation:</label>
-                    <div v-if="!snippet._editing">
-                      <p v-if="snippet.annotation" class="mb-1">{{ snippet.annotation }}</p>
-                      <p v-else class="text-muted fst-italic mb-1">No annotation</p>
-                      <button class="btn btn-sm btn-outline-secondary" @click="snippet._editing = true; snippet._tempAnnotation = snippet.annotation">
-                        Edit Annotation
-                      </button>
+                  <!-- Video Snippets -->
+                  <template v-if="snippet.type === 'video'">
+                    <div class="row mb-2">
+                      <div class="col-6">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                          <label class="form-label small fw-bold text-danger mb-0">🔄 Reversed:</label>
+                          <select
+                            :value="snippetSpeeds[snippet.id]?.reversed || 1"
+                            class="form-select form-select-sm speed-select-mini"
+                            @change="updateSnippetSpeed(snippet.id, 'reversed', parseFloat($event.target.value))"
+                          >
+                            <option :value="0.25">0.25x</option>
+                            <option :value="0.5">0.5x</option>
+                            <option :value="0.75">0.75x</option>
+                            <option :value="1">1x</option>
+                            <option :value="1.5">1.5x</option>
+                            <option :value="2">2x</option>
+                          </select>
+                        </div>
+                        <video
+                          :ref="el => snippetMediaRefs[`reversed_${snippet.id}`] = el"
+                          :src="snippet.url"
+                          controls
+                          class="w-100 snippet-video"
+                        ></video>
+                      </div>
+                      <div class="col-6">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                          <label class="form-label small fw-bold text-success mb-0">▶ Forward:</label>
+                          <select
+                            :value="snippetSpeeds[snippet.id]?.forward || 1"
+                            class="form-select form-select-sm speed-select-mini"
+                            @change="updateSnippetSpeed(snippet.id, 'forward', parseFloat($event.target.value))"
+                          >
+                            <option :value="0.25">0.25x</option>
+                            <option :value="0.5">0.5x</option>
+                            <option :value="0.75">0.75x</option>
+                            <option :value="1">1x</option>
+                            <option :value="1.5">1.5x</option>
+                            <option :value="2">2x</option>
+                          </select>
+                        </div>
+                        <video
+                          :ref="el => snippetMediaRefs[`forward_${snippet.id}`] = el"
+                          :src="snippet.forwardUrl"
+                          controls
+                          class="w-100 snippet-video"
+                        ></video>
+                      </div>
                     </div>
-                    <div v-else class="d-flex gap-2">
+                  </template>
+                  
+                  <!-- Audio Snippets -->
+                  <template v-else>
+                    <div class="mb-2">
+                      <div class="d-flex align-items-center justify-content-between mb-1">
+                        <label class="form-label small fw-bold text-danger mb-0">🔄 Reversed:</label>
+                        <select
+                          :value="snippetSpeeds[snippet.id]?.reversed || 1"
+                          class="form-select form-select-sm speed-select-mini"
+                          @change="updateSnippetSpeed(snippet.id, 'reversed', parseFloat($event.target.value))"
+                        >
+                          <option :value="0.25">0.25x</option>
+                          <option :value="0.5">0.5x</option>
+                          <option :value="0.75">0.75x</option>
+                          <option :value="1">1x</option>
+                          <option :value="1.5">1.5x</option>
+                          <option :value="2">2x</option>
+                        </select>
+                      </div>
+                      <audio
+                        :ref="el => snippetMediaRefs[`reversed_${snippet.id}`] = el"
+                        :src="snippet.url"
+                        controls
+                        class="w-100"
+                      ></audio>
+                    </div>
+                    <div class="mb-2">
+                      <div class="d-flex align-items-center justify-content-between mb-1">
+                        <label class="form-label small fw-bold text-success mb-0">▶ Forward:</label>
+                        <select
+                          :value="snippetSpeeds[snippet.id]?.forward || 1"
+                          class="form-select form-select-sm speed-select-mini"
+                          @change="updateSnippetSpeed(snippet.id, 'forward', parseFloat($event.target.value))"
+                        >
+                          <option :value="0.25">0.25x</option>
+                          <option :value="0.5">0.5x</option>
+                          <option :value="0.75">0.75x</option>
+                          <option :value="1">1x</option>
+                          <option :value="1.5">1.5x</option>
+                          <option :value="2">2x</option>
+                        </select>
+                      </div>
+                      <audio
+                        :ref="el => snippetMediaRefs[`forward_${snippet.id}`] = el"
+                        :src="snippet.forwardUrl"
+                        controls
+                        class="w-100"
+                      ></audio>
+                    </div>
+                  </template>
+                  
+                  <!-- Annotation -->
+                  <div class="mb-2">
+                    <div v-if="!snippet._editing" class="annotation-box p-2 bg-light rounded">
+                      <p v-if="snippet.annotation" class="mb-0 small">📝 {{ snippet.annotation }}</p>
+                      <p v-else class="mb-0 text-muted fst-italic small">No annotation</p>
+                    </div>
+                    <div v-if="snippet._editing" class="d-flex gap-2">
                       <input v-model="snippet._tempAnnotation" class="form-control form-control-sm" placeholder="Enter annotation..." />
                       <button class="btn btn-sm btn-success" @click="saveSnippetAnnotation(snippet)">Save</button>
                       <button class="btn btn-sm btn-outline-secondary" @click="snippet._editing = false">Cancel</button>
                     </div>
                   </div>
                   
-                  <div class="d-flex gap-2 mt-2">
+                  <!-- Actions -->
+                  <div class="d-flex gap-2 flex-wrap">
+                    <button
+                      v-if="!snippet._editing"
+                      class="btn btn-sm btn-outline-secondary"
+                      @click="snippet._editing = true; snippet._tempAnnotation = snippet.annotation"
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      class="btn btn-sm btn-success"
+                      @click="exportStitchedSnippet(snippet)"
+                      :disabled="exportingSnippets[snippet.id]"
+                    >
+                      <span v-if="exportingSnippets[snippet.id]" class="spinner-border spinner-border-sm me-1"></span>
+                      📦 Export Stitched
+                    </button>
                     <a :href="snippet.url" download class="btn btn-sm btn-outline-primary">⬇ Reversed</a>
                     <a :href="snippet.forwardUrl" download class="btn btn-sm btn-outline-primary">⬇ Forward</a>
-                    <button class="btn btn-sm btn-outline-danger" @click="deleteSnippet(snippet.id)">Delete</button>
+                    <button class="btn btn-sm btn-outline-danger" @click="deleteSnippet(snippet.id)">🗑️ Delete</button>
                   </div>
                 </div>
               </div>
@@ -288,11 +397,24 @@
             <input v-model="snippetAnnotation" class="form-control" placeholder="What do you hear in this segment?" />
           </div>
           
+          <div class="mb-3">
+            <label class="form-label d-flex align-items-center gap-2">
+              <input type="checkbox" v-model="includeVideoInSnippet" class="form-check-input" style="margin-top: 0;" />
+              Include Video (creates video clips instead of audio-only)
+            </label>
+            <small class="text-muted">Video snippets are larger but include visual context for lip-reading analysis.</small>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Current Playback Speed: {{ playbackSpeed }}x</label>
+            <small class="text-muted d-block">This speed will be saved with the snippet for reference.</small>
+          </div>
+          
           <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" @click="showSaveSnippetModal = false">Cancel</button>
             <button class="btn btn-success" @click="saveSnippet" :disabled="isSavingSnippet || !snippetName.trim()">
               <span v-if="isSavingSnippet" class="spinner-border spinner-border-sm me-1"></span>
-              Save Snippet
+              Save {{ includeVideoInSnippet ? 'Video' : 'Audio' }} Snippet
             </button>
           </div>
         </div>
@@ -356,6 +478,10 @@ const showSaveSnippetModal = ref(false);
 const snippetName = ref('');
 const snippetAnnotation = ref('');
 const isSavingSnippet = ref(false);
+const includeVideoInSnippet = ref(false);
+const snippetSpeeds = ref({}); // { snippetId: { forward: 1, reversed: 1 } }
+const snippetMediaRefs = ref({});
+const exportingSnippets = ref({}); // { snippetId: true/false }
 
 // Markers
 const markers = ref([]);
@@ -439,6 +565,12 @@ const loadExistingAnalysis = async () => {
     analysisData.value = response.data;
     markers.value = response.data.markers || [];
     snippets.value = (response.data.snippets || []).map(s => ({ ...s, _editing: false, _tempAnnotation: '' }));
+    
+    // Initialize speeds for loaded snippets
+    snippets.value.forEach(s => {
+      const savedSpeed = s.playbackSpeed || 1;
+      snippetSpeeds.value[s.id] = { forward: savedSpeed, reversed: savedSpeed };
+    });
     
     await nextTick();
     initializeWaveform();
@@ -656,18 +788,77 @@ const saveSnippet = async () => {
       end: selectedRegion.value.end,
       playbackSpeed: playbackSpeed.value,
       name: snippetName.value,
-      annotation: snippetAnnotation.value
+      annotation: snippetAnnotation.value,
+      includeVideo: includeVideoInSnippet.value
     });
     
-    snippets.value.push({ ...response.data, _editing: false, _tempAnnotation: '', _tempName: '' });
+    const newSnippet = { ...response.data, _editing: false, _tempAnnotation: '', _tempName: '' };
+    snippets.value.push(newSnippet);
+    
+    // Initialize individual speeds for forward and reversed
+    const savedSpeed = newSnippet.playbackSpeed || 1;
+    snippetSpeeds.value[newSnippet.id] = { forward: savedSpeed, reversed: savedSpeed };
+    
     showSaveSnippetModal.value = false;
     snippetName.value = '';
     snippetAnnotation.value = '';
+    includeVideoInSnippet.value = false;
     clearSelectedRegion();
   } catch (err) {
     error.value = 'Failed to save snippet: ' + (err.response?.data?.error || err.message);
   } finally {
     isSavingSnippet.value = false;
+  }
+};
+
+// Update playback speed for a snippet's individual media element
+const updateSnippetSpeed = (snippetId, which, speed) => {
+  // Initialize if needed
+  if (!snippetSpeeds.value[snippetId]) {
+    snippetSpeeds.value[snippetId] = { forward: 1, reversed: 1 };
+  }
+  
+  // Update the speed in state
+  snippetSpeeds.value[snippetId][which] = speed;
+  
+  // Apply to media element
+  const mediaRef = snippetMediaRefs.value[`${which}_${snippetId}`];
+  if (mediaRef) {
+    mediaRef.playbackRate = speed;
+  }
+};
+
+// Export stitched snippet (reversed + forward with individual speeds)
+const exportStitchedSnippet = async (snippet) => {
+  exportingSnippets.value[snippet.id] = true;
+  
+  try {
+    const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
+    
+    const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
+      snippetId: snippet.id,
+      analysisId: analysisId.value,
+      reversedSpeed: speeds.reversed,
+      forwardSpeed: speeds.forward,
+      type: snippet.type // 'video' or 'audio'
+    }, {
+      responseType: 'blob'
+    });
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    const ext = snippet.type === 'video' ? 'mp4' : 'wav';
+    link.setAttribute('download', `${snippet.name || 'snippet'}_stitched.${ext}`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    error.value = 'Failed to export stitched snippet: ' + (err.response?.data?.error || err.message);
+  } finally {
+    exportingSnippets.value[snippet.id] = false;
   }
 };
 
@@ -804,5 +995,27 @@ watch(currentTime, (time) => {
 
 .badge {
   font-weight: normal;
+}
+
+.snippet-card {
+  border: 1px solid #dee2e6;
+}
+
+.snippet-card .card-header {
+  background: #f8f9fa;
+  padding: 0.5rem 1rem;
+}
+
+.snippet-video {
+  border-radius: 4px;
+  max-height: 150px;
+  object-fit: contain;
+  background: #000;
+}
+
+.speed-select-mini {
+  width: 70px;
+  padding: 2px 4px;
+  font-size: 0.75rem;
 }
 </style>
