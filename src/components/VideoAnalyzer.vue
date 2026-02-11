@@ -74,7 +74,7 @@
           <div class="col-md-6">
             <div class="video-container position-relative">
               <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Reversed Audio Video</h5>
+                <h5 class="mb-0">Reverse Speech Analysis</h5>
                 <span v-if="!isSynced" class="badge bg-secondary">Master</span>
               </div>
               <video
@@ -109,7 +109,7 @@
                 ⏪ -10s
               </button>
               <button class="btn btn-primary" @click="togglePlay">
-                {{ isPlaying ? '⏸ Pause' : '▶ Play (Reversed)' }}
+                {{ isPlaying ? '⏸ Pause' : '▶ Play' }}
               </button>
               <button class="btn btn-secondary btn-sm" @click="skip(10)" title="Skip forward 10s">
                 +10s ⏩
@@ -164,7 +164,7 @@
         
         <!-- Waveform Timeline -->
         <div class="mb-3">
-          <h5>Reversed Audio Waveform</h5>
+          <h5>Analysis Waveform</h5>
           <p class="text-muted small">Click and drag to select a region for looping or saving as snippet</p>
           <div ref="waveformContainer" class="waveform-container border rounded"></div>
           

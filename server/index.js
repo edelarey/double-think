@@ -5,6 +5,7 @@ import Meyda from 'meyda';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { processAudio } from './processAudio.js';
 import WavDecoder from 'wav-decoder';
 import cors from 'cors';
 
@@ -640,28 +641,23 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
     const extractedStat = await fs.stat(extractedAudioPath);
     console.log(`Extracted audio: ${extractedAudioPath}, size: ${extractedStat.size} bytes`);
     
-    // Step 2: Reverse the audio
-    console.log('Step 2: Reversing audio...');
-    await new Promise((resolve, reject) => {
-      ffmpeg(extractedAudioPath)
-        .audioFilter('areverse')
-        .audioCodec('pcm_s16le')
-        .format('wav')
-        .output(reversedAudioPath)
-        .on('end', resolve)
-        .on('error', (err) => {
-          console.error('FFmpeg reverse error:', err);
-          reject(err);
-        })
-        .run();
-    });
+    // Step 2: Reverse the audio using segment-based processing
+    console.log('Step 2: Reversing audio segments...');
     
-    // Verify reversed audio exists
+    // Use our custom processor instead of simple ffmpeg reversal
+    // This maintains the timeline but reverses local speech segments
+    const processedSegments = await processAudio(extractedAudioPath, reversedAudioPath);
+    
+    console.log(`Audio processed with ${processedSegments.length} reversed segments.`);
+    
+    // Verify processed audio exists
     const reversedStat = await fs.stat(reversedAudioPath);
-    console.log(`Reversed audio: ${reversedAudioPath}, size: ${reversedStat.size} bytes`);
+    console.log(`Processed audio: ${reversedAudioPath}, size: ${reversedStat.size} bytes`);
     
-    // Step 3: Mux reversed audio with original video
-    console.log('Step 3: Muxing reversed audio with video...');
+    // Step 3: Mux processed audio with original video
+    // IMPORTANT: Both video inputs are now playing FORWARD relative to timeline.
+    // The "Reversed" video is just the original video with the modified audio track.
+    console.log('Step 3: Muxing processed audio with video...');
     await new Promise((resolve, reject) => {
       ffmpeg()
         .input(inputPath)
