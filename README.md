@@ -1,6 +1,6 @@
 # DoubleThink
 
-DoubleThink is a web application for analyzing reverse speech in audio files, inspired by George Orwell's concept of holding contradictory beliefs. It allows users to upload MP3/WAV files, reverse audio, extract snippets, annotate segments, adjust playback speed, and visualize audio properties using audio visualization tools. The app features a snippet library for playing back saved reverse and forward snippets, built with Vue.js, Express, Bootstrap, and audio processing libraries.
+DoubleThink is a web application for analyzing reverse speech in audio files, inspired by George Orwell's concept of holding contradictory beliefs. It allows users to upload MP4 files, reverse audio, extract snippets, annotate segments, adjust playback speed, and visualize audio properties using audio visualization tools. Allows downlaods of snippets, both audio and video. The app features a snippet library for playing back saved reverse and forward snippets, built with Vue.js, Express, Bootstrap, and audio processing libraries.
 
 ## Features
 - **Input**: Supports MP3, WAV, and other audio formats.
