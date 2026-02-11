@@ -364,11 +364,20 @@
                     </button>
                     <button
                       class="btn btn-sm btn-success"
-                      @click="exportStitchedSnippet(snippet)"
-                      :disabled="exportingSnippets[snippet.id]"
+                      @click="exportStitchedAudio(snippet)"
+                      :disabled="exportingSnippets[snippet.id]?.audio"
                     >
-                      <span v-if="exportingSnippets[snippet.id]" class="spinner-border spinner-border-sm me-1"></span>
-                      📦 Export Stitched
+                      <span v-if="exportingSnippets[snippet.id]?.audio" class="spinner-border spinner-border-sm me-1"></span>
+                      🎵 Export Audio
+                    </button>
+                    <button
+                      v-if="snippet.type === 'video'"
+                      class="btn btn-sm btn-primary"
+                      @click="exportStitchedVideo(snippet)"
+                      :disabled="exportingSnippets[snippet.id]?.video"
+                    >
+                      <span v-if="exportingSnippets[snippet.id]?.video" class="spinner-border spinner-border-sm me-1"></span>
+                      🎬 Export Video
                     </button>
                     <a :href="snippet.url" download class="btn btn-sm btn-outline-primary">⬇ Reversed</a>
                     <a :href="snippet.forwardUrl" download class="btn btn-sm btn-outline-primary">⬇ Forward</a>
@@ -828,9 +837,12 @@ const updateSnippetSpeed = (snippetId, which, speed) => {
   }
 };
 
-// Export stitched snippet (reversed + forward with individual speeds)
-const exportStitchedSnippet = async (snippet) => {
-  exportingSnippets.value[snippet.id] = true;
+// Export stitched audio (forward first, then reversed)
+const exportStitchedAudio = async (snippet) => {
+  if (!exportingSnippets.value[snippet.id]) {
+    exportingSnippets.value[snippet.id] = {};
+  }
+  exportingSnippets.value[snippet.id].audio = true;
   
   try {
     const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
@@ -840,7 +852,7 @@ const exportStitchedSnippet = async (snippet) => {
       analysisId: analysisId.value,
       reversedSpeed: speeds.reversed,
       forwardSpeed: speeds.forward,
-      type: snippet.type // 'video' or 'audio'
+      exportType: 'audio' // Always export as audio-only
     }, {
       responseType: 'blob'
     });
@@ -849,16 +861,51 @@ const exportStitchedSnippet = async (snippet) => {
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
     link.href = url;
-    const ext = snippet.type === 'video' ? 'mp4' : 'wav';
-    link.setAttribute('download', `${snippet.name || 'snippet'}_stitched.${ext}`);
+    link.setAttribute('download', `${snippet.name || 'snippet'}_audio.wav`);
     document.body.appendChild(link);
     link.click();
     link.remove();
     window.URL.revokeObjectURL(url);
   } catch (err) {
-    error.value = 'Failed to export stitched snippet: ' + (err.response?.data?.error || err.message);
+    error.value = 'Failed to export audio: ' + (err.response?.data?.error || err.message);
   } finally {
-    exportingSnippets.value[snippet.id] = false;
+    exportingSnippets.value[snippet.id].audio = false;
+  }
+};
+
+// Export stitched video (forward video x2 with stitched audio overlay)
+const exportStitchedVideo = async (snippet) => {
+  if (!exportingSnippets.value[snippet.id]) {
+    exportingSnippets.value[snippet.id] = {};
+  }
+  exportingSnippets.value[snippet.id].video = true;
+  
+  try {
+    const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
+    
+    const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
+      snippetId: snippet.id,
+      analysisId: analysisId.value,
+      reversedSpeed: speeds.reversed,
+      forwardSpeed: speeds.forward,
+      exportType: 'video' // Export as video with audio overlay
+    }, {
+      responseType: 'blob'
+    });
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${snippet.name || 'snippet'}_video.mp4`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    error.value = 'Failed to export video: ' + (err.response?.data?.error || err.message);
+  } finally {
+    exportingSnippets.value[snippet.id].video = false;
   }
 };
 

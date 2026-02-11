@@ -1216,12 +1216,13 @@ app.get('/api/video-snippets', async (req, res) => {
 });
 
 /**
- * Stitch reversed and forward snippets together with individual speeds
- * Returns a downloadable file (video or audio)
+ * Stitch forward and reversed snippets together with individual speeds
+ * Order: Forward first, then Reversed
+ * exportType: 'audio' = audio-only WAV, 'video' = MP4 with forward video x2 + stitched audio
  */
 app.post('/api/stitch-snippet', async (req, res) => {
   try {
-    const { snippetId, analysisId, reversedSpeed, forwardSpeed, type } = req.body;
+    const { snippetId, analysisId, reversedSpeed, forwardSpeed, exportType } = req.body;
     
     if (!snippetId || !analysisId) {
       return res.status(400).json({ error: 'Missing required fields: snippetId, analysisId' });
@@ -1241,6 +1242,7 @@ app.post('/api/stitch-snippet', async (req, res) => {
       return res.status(404).json({ error: 'Snippet not found' });
     }
     
+    // Get source files
     const reversedFilePath = path.join(snippetsDir, snippet.file);
     const forwardFilePath = path.join(snippetsDir, snippet.forwardFile);
     
@@ -1252,98 +1254,160 @@ app.post('/api/stitch-snippet', async (req, res) => {
       return res.status(404).json({ error: 'Snippet files not found' });
     }
     
+    // For video export, we need to use the original forward video from the analysis
+    // The forward video snippet is created from the original video
+    const isVideoSnippet = snippet.type === 'video';
+    
     const timestamp = Date.now();
-    const isVideo = type === 'video';
-    const ext = isVideo ? 'mp4' : 'wav';
-    const outputFilename = `stitched_${timestamp}.${ext}`;
-    const outputPath = path.join(snippetsDir, outputFilename);
-    
-    // Temporary files for speed-adjusted clips
-    const tempReversed = path.join(snippetsDir, `temp_rev_${timestamp}.${ext}`);
-    const tempForward = path.join(snippetsDir, `temp_fwd_${timestamp}.${ext}`);
-    
-    // Apply speed to reversed clip
     const revSpeed = parseFloat(reversedSpeed) || 1;
     const fwdSpeed = parseFloat(forwardSpeed) || 1;
     
-    // Speed adjustment using FFmpeg
-    // For video: setpts for video, atempo for audio
-    // For audio-only: atempo filter
+    // Helper: atempo only supports 0.5-2.0, chain filters if needed
+    const getAtempoFilters = (speed) => {
+      const filters = [];
+      let s = speed;
+      while (s > 2.0) {
+        filters.push('atempo=2.0');
+        s /= 2.0;
+      }
+      while (s < 0.5) {
+        filters.push('atempo=0.5');
+        s /= 0.5;
+      }
+      filters.push(`atempo=${s}`);
+      return filters.join(',');
+    };
     
-    if (isVideo) {
-      // Adjust reversed video speed
+    if (exportType === 'video') {
+      // Video export: Forward video (played twice at different speeds) + stitched audio overlay
+      // Requires video snippets
+      if (!isVideoSnippet) {
+        return res.status(400).json({ error: 'Video export requires a video snippet. This is an audio-only snippet.' });
+      }
+      
+      const outputFilename = `stitched_video_${timestamp}.mp4`;
+      const outputPath = path.join(snippetsDir, outputFilename);
+      
+      // Temp files
+      const tempForwardAudio = path.join(snippetsDir, `temp_fwd_audio_${timestamp}.wav`);
+      const tempReversedAudio = path.join(snippetsDir, `temp_rev_audio_${timestamp}.wav`);
+      const tempStitchedAudio = path.join(snippetsDir, `temp_stitched_audio_${timestamp}.wav`);
+      const tempVideo1 = path.join(snippetsDir, `temp_vid1_${timestamp}.mp4`);
+      const tempVideo2 = path.join(snippetsDir, `temp_vid2_${timestamp}.mp4`);
+      const tempStitchedVideo = path.join(snippetsDir, `temp_stitched_video_${timestamp}.mp4`);
+      
+      // 1. Extract and speed-adjust FORWARD audio (plays first)
       await new Promise((resolve, reject) => {
-        ffmpeg(reversedFilePath)
-          .videoFilters(`setpts=${1/revSpeed}*PTS`)
-          .audioFilters(`atempo=${revSpeed}`)
-          .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
-          .output(tempReversed)
+        ffmpeg(forwardFilePath)
+          .audioFilters(getAtempoFilters(fwdSpeed))
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(tempForwardAudio)
           .on('end', resolve)
           .on('error', reject)
           .run();
       });
       
-      // Adjust forward video speed
+      // 2. Extract and speed-adjust REVERSED audio (plays second)
+      await new Promise((resolve, reject) => {
+        ffmpeg(reversedFilePath)
+          .audioFilters(getAtempoFilters(revSpeed))
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(tempReversedAudio)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // 3. Stitch audio: Forward first, then Reversed
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(tempForwardAudio)
+          .input(tempReversedAudio)
+          .complexFilter(['[0:a][1:a]concat=n=2:v=0:a=1[out]'])
+          .outputOptions(['-map', '[out]'])
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(tempStitchedAudio)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // 4. Create first video segment (forward video at forward speed)
       await new Promise((resolve, reject) => {
         ffmpeg(forwardFilePath)
           .videoFilters(`setpts=${1/fwdSpeed}*PTS`)
-          .audioFilters(`atempo=${fwdSpeed}`)
-          .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
-          .output(tempForward)
+          .outputOptions(['-c:v libx264', '-an', '-preset fast'])
+          .output(tempVideo1)
           .on('end', resolve)
           .on('error', reject)
           .run();
       });
       
-      // Concatenate the two clips
-      // Create a concat file
+      // 5. Create second video segment (forward video at reversed speed)
+      await new Promise((resolve, reject) => {
+        ffmpeg(forwardFilePath)
+          .videoFilters(`setpts=${1/revSpeed}*PTS`)
+          .outputOptions(['-c:v libx264', '-an', '-preset fast'])
+          .output(tempVideo2)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // 6. Concatenate videos
       const concatFile = path.join(snippetsDir, `concat_${timestamp}.txt`);
-      await fs.writeFile(concatFile, `file '${tempReversed}'\nfile '${tempForward}'`);
+      await fs.writeFile(concatFile, `file '${tempVideo1}'\nfile '${tempVideo2}'`);
       
       await new Promise((resolve, reject) => {
         ffmpeg()
           .input(concatFile)
           .inputOptions(['-f', 'concat', '-safe', '0'])
           .outputOptions(['-c', 'copy'])
+          .output(tempStitchedVideo)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // 7. Mux stitched video with stitched audio
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(tempStitchedVideo)
+          .input(tempStitchedAudio)
+          .outputOptions(['-c:v copy', '-c:a aac', '-shortest'])
           .output(outputPath)
           .on('end', resolve)
           .on('error', reject)
           .run();
       });
       
-      // Cleanup concat file
+      // Cleanup temp files
+      await fs.unlink(tempForwardAudio).catch(() => {});
+      await fs.unlink(tempReversedAudio).catch(() => {});
+      await fs.unlink(tempStitchedAudio).catch(() => {});
+      await fs.unlink(tempVideo1).catch(() => {});
+      await fs.unlink(tempVideo2).catch(() => {});
+      await fs.unlink(tempStitchedVideo).catch(() => {});
       await fs.unlink(concatFile).catch(() => {});
-    } else {
-      // Audio-only processing
-      // atempo only supports 0.5-2.0, chain filters if needed
-      const getAtempoFilters = (speed) => {
-        const filters = [];
-        let s = speed;
-        while (s > 2.0) {
-          filters.push('atempo=2.0');
-          s /= 2.0;
-        }
-        while (s < 0.5) {
-          filters.push('atempo=0.5');
-          s /= 0.5;
-        }
-        filters.push(`atempo=${s}`);
-        return filters.join(',');
-      };
       
-      // Adjust reversed audio speed
-      await new Promise((resolve, reject) => {
-        ffmpeg(reversedFilePath)
-          .audioFilters(getAtempoFilters(revSpeed))
-          .audioCodec('pcm_s16le')
-          .format('wav')
-          .output(tempReversed)
-          .on('end', resolve)
-          .on('error', reject)
-          .run();
+      // Send file
+      res.download(outputPath, outputFilename, async (err) => {
+        if (err) console.error('Error sending stitched video:', err);
+        await fs.unlink(outputPath).catch(() => {});
       });
       
-      // Adjust forward audio speed
+    } else {
+      // Audio-only export: Forward first, then Reversed
+      const outputFilename = `stitched_audio_${timestamp}.wav`;
+      const outputPath = path.join(snippetsDir, outputFilename);
+      
+      const tempForward = path.join(snippetsDir, `temp_fwd_${timestamp}.wav`);
+      const tempReversed = path.join(snippetsDir, `temp_rev_${timestamp}.wav`);
+      
+      // 1. Speed-adjust FORWARD audio (plays first)
       await new Promise((resolve, reject) => {
         ffmpeg(forwardFilePath)
           .audioFilters(getAtempoFilters(fwdSpeed))
@@ -1355,11 +1419,23 @@ app.post('/api/stitch-snippet', async (req, res) => {
           .run();
       });
       
-      // Concatenate audio files
+      // 2. Speed-adjust REVERSED audio (plays second)
+      await new Promise((resolve, reject) => {
+        ffmpeg(reversedFilePath)
+          .audioFilters(getAtempoFilters(revSpeed))
+          .audioCodec('pcm_s16le')
+          .format('wav')
+          .output(tempReversed)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+      
+      // 3. Concatenate: Forward first, then Reversed
       await new Promise((resolve, reject) => {
         ffmpeg()
-          .input(tempReversed)
           .input(tempForward)
+          .input(tempReversed)
           .complexFilter(['[0:a][1:a]concat=n=2:v=0:a=1[out]'])
           .outputOptions(['-map', '[out]'])
           .audioCodec('pcm_s16le')
@@ -1369,20 +1445,17 @@ app.post('/api/stitch-snippet', async (req, res) => {
           .on('error', reject)
           .run();
       });
+      
+      // Cleanup temp files
+      await fs.unlink(tempForward).catch(() => {});
+      await fs.unlink(tempReversed).catch(() => {});
+      
+      // Send file
+      res.download(outputPath, outputFilename, async (err) => {
+        if (err) console.error('Error sending stitched audio:', err);
+        await fs.unlink(outputPath).catch(() => {});
+      });
     }
-    
-    // Cleanup temp files
-    await fs.unlink(tempReversed).catch(() => {});
-    await fs.unlink(tempForward).catch(() => {});
-    
-    // Send the stitched file
-    res.download(outputPath, outputFilename, async (err) => {
-      if (err) {
-        console.error('Error sending stitched file:', err);
-      }
-      // Cleanup output file after download
-      await fs.unlink(outputPath).catch(() => {});
-    });
     
   } catch (error) {
     console.error('Error stitching snippet:', error);
