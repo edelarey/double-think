@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "scripts": {
     "start-server": "node server/index.js",
-    "dev": "vite",
+    "start": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
