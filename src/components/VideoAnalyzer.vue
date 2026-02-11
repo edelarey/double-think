@@ -535,64 +535,43 @@ const initializeWaveform = () => {
     const time = relativeX * waveSurfer.getDuration();
     seekTo(time);
   });
-  
-  // Manual region selection
-  let dragStart = null;
-  let dragRegion = null;
-  const container = waveformContainer.value;
-  
-  const getTimeForEvent = (e) => {
-    const rect = container.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const percent = Math.max(0, Math.min(1, x / rect.width));
-    return percent * waveSurfer.getDuration();
-  };
-  
-  const onMouseDown = (e) => {
-    dragStart = getTimeForEvent(e);
-    if (dragRegion) {
-      dragRegion.remove();
-      dragRegion = null;
-    }
-    container.addEventListener('mousemove', onMouseMove);
-    container.addEventListener('touchmove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    document.addEventListener('touchend', onMouseUp);
-  };
-  
-  const onMouseMove = (e) => {
-    if (dragStart == null) return;
-    const dragEnd = getTimeForEvent(e);
-    const start = Math.min(dragStart, dragEnd);
-    const end = Math.max(dragStart, dragEnd);
-    if (dragRegion) dragRegion.remove();
-    dragRegion = regionsPlugin.addRegion({
-      start,
-      end,
-      color: 'rgba(0, 123, 255, 0.2)',
-      drag: false,
-      resize: true,
+
+  // Enable native drag selection
+  regionsPlugin.enableDragSelection({
+    color: 'rgba(0, 123, 255, 0.2)',
+  });
+
+  // Handle region creation (selection)
+  regionsPlugin.on('region-created', (region) => {
+    // Remove previous selection regions (keep markers)
+    regionsPlugin.getRegions().forEach(r => {
+      // If it exists, is not the new one, and is not a marker -> remove it
+      if (r.id !== region.id && !r.id.toString().startsWith('marker_')) {
+        r.remove();
+      }
     });
-  };
-  
-  const onMouseUp = () => {
-    container.removeEventListener('mousemove', onMouseMove);
-    container.removeEventListener('touchmove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-    document.removeEventListener('touchend', onMouseUp);
     
-    if (dragRegion && dragStart !== null) {
-      selectedRegion.value = {
-        start: dragRegion.start,
-        end: dragRegion.end
-      };
-      setLoop(dragRegion.start, dragRegion.end);
+    // Update state
+    selectedRegion.value = { start: region.start, end: region.end };
+    setLoop(region.start, region.end);
+  });
+
+  // Handle region updates (resize/drag)
+  regionsPlugin.on('region-updated', (region) => {
+    if (!region.id.toString().startsWith('marker_')) {
+      selectedRegion.value = { start: region.start, end: region.end };
+      setLoop(region.start, region.end);
     }
-    dragStart = null;
-  };
+  });
   
-  container.addEventListener('mousedown', onMouseDown);
-  container.addEventListener('touchstart', onMouseDown);
+  // Handle clicking a region (activate selection)
+  regionsPlugin.on('region-clicked', (region, e) => {
+    e.stopPropagation();
+    if (!region.id.toString().startsWith('marker_')) {
+      selectedRegion.value = { start: region.start, end: region.end };
+      setLoop(region.start, region.end);
+    }
+  });
 };
 
 const addMarkerToWaveform = (marker) => {
