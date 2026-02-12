@@ -604,6 +604,7 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
     const ext = path.extname(req.file.originalname).toLowerCase();
     const timestamp = Date.now();
     const analysisId = `video_${timestamp}`;
+    const videoName = req.body.name || null; // Optional video name
     
     // Define output paths
     const originalVideoFileName = `original_${timestamp}${ext}`;
@@ -694,6 +695,7 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
     const analysisPath = path.join(videosDir, `${analysisId}.json`);
     const analysisData = {
       analysisId,
+      name: videoName,
       originalVideoPath: originalVideoPath,
       reversedVideoPath: reversedVideoPath,
       extractedAudioPath: extractedAudioPath,
@@ -746,6 +748,7 @@ app.get('/api/videos', async (req, res) => {
         const analysisData = JSON.parse(await fs.readFile(analysisPath));
         videos.push({
           analysisId: analysisData.analysisId,
+          name: analysisData.name || null,
           originalVideoUrl: analysisData.originalVideoUrl,
           reversedVideoUrl: analysisData.reversedVideoUrl,
           reversedAudioUrl: analysisData.reversedAudioUrl,

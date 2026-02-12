@@ -30,12 +30,15 @@ export async function processAudio(inputPath, outputPath) {
     // Simple RMS threshold. 
     // If signal is normalized -1 to 1, 0.02 is a reasonable noise floor.
     // Adjust based on typical input levels.
-    const threshold = 0.02; 
+    const threshold = 0.02;
     // Minimum duration for a speech segment (e.g., 250ms)
     // Audio shorter than this is likely noise or clicks/pops
     const minSpeechSamples = Math.floor(0.25 * sampleRate);
     // Merge segments closer than this (e.g., 200ms)
     const mergeDistanceSamples = Math.floor(0.2 * sampleRate);
+    // Maximum duration for a single reversed segment (2 seconds)
+    // Longer segments are split to ensure proper reversal alignment
+    const maxSegmentSamples = Math.floor(2.0 * sampleRate);
     
     // Calculate Energy profile
     // Map 1 for speech, 0 for silence
@@ -108,7 +111,30 @@ export async function processAudio(inputPath, outputPath) {
         }
     }
 
-    console.log(`Detected ${segments.length} segments to reverse.`);
+    // Split segments longer than maxSegmentSamples into chunks
+    // This ensures no reversed segment exceeds 2 seconds
+    const finalSegments = [];
+    for (const seg of segments) {
+        const segLength = seg.end - seg.start;
+        
+        if (segLength <= maxSegmentSamples) {
+            // Segment is within limit, keep as-is
+            finalSegments.push(seg);
+        } else {
+            // Split into chunks of maxSegmentSamples
+            let chunkStart = seg.start;
+            while (chunkStart < seg.end) {
+                const chunkEnd = Math.min(chunkStart + maxSegmentSamples, seg.end);
+                // Only add chunk if it meets minimum length
+                if (chunkEnd - chunkStart >= minSpeechSamples) {
+                    finalSegments.push({ start: chunkStart, end: chunkEnd });
+                }
+                chunkStart = chunkEnd;
+            }
+        }
+    }
+
+    console.log(`Detected ${segments.length} VAD segments, split into ${finalSegments.length} chunks (max 2s each).`);
 
     // Create output buffer channels (clone originals)
     const outputChannels = [];
@@ -116,8 +142,8 @@ export async function processAudio(inputPath, outputPath) {
       outputChannels[c] = new Float32Array(channelData[c]);
     }
 
-    // Reverse segments in place
-    for (const seg of segments) {
+    // Reverse segments in place (using finalSegments which are max 2s each)
+    for (const seg of finalSegments) {
       const len = seg.end - seg.start;
       
       for (let c = 0; c < numChannels; c++) {
@@ -143,7 +169,7 @@ export async function processAudio(inputPath, outputPath) {
     await fs.writeFile(outputPath, Buffer.from(encoded));
     
     // Return segments in seconds for potential frontend visualization
-    return segments.map(s => ({
+    return finalSegments.map(s => ({
         start: s.start / sampleRate,
         end: s.end / sampleRate
     }));

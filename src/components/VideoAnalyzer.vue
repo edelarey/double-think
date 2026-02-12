@@ -8,6 +8,10 @@
         <div class="mb-3">
           <label class="form-label">Upload Video File</label>
           <input type="file" accept="video/*" class="form-control mb-2" @change="handleFileSelect" />
+          <div v-if="selectedFile" class="mb-2">
+            <label class="form-label">Video Name (optional)</label>
+            <input type="text" v-model="videoName" class="form-control" placeholder="Give this video a name..." />
+          </div>
           <button class="btn btn-primary" :disabled="!selectedFile" @click="processVideo">
             Process Video
           </button>
@@ -19,7 +23,7 @@
           <select v-model="selectedExistingId" class="form-select" @change="loadExistingAnalysis">
             <option value="">Select a video...</option>
             <option v-for="video in existingVideos" :key="video.analysisId" :value="video.analysisId">
-              {{ video.analysisId }} ({{ formatDuration(video.duration) }})
+              {{ video.name || video.analysisId }} ({{ formatDuration(video.duration) }})
             </option>
           </select>
         </div>
@@ -470,6 +474,7 @@ const waveformContainer = ref(null);
 
 // State
 const selectedFile = ref(null);
+const videoName = ref('');
 const isProcessing = ref(false);
 const error = ref(null);
 const analysisData = ref(null);
@@ -544,6 +549,9 @@ const processVideo = async () => {
   
   const formData = new FormData();
   formData.append('video', selectedFile.value);
+  if (videoName.value.trim()) {
+    formData.append('name', videoName.value.trim());
+  }
   
   try {
     const response = await axios.post(`${API_BASE}/api/process-video`, formData, {
@@ -602,6 +610,7 @@ const fetchExistingVideos = async () => {
 const resetAnalysis = () => {
   analysisData.value = null;
   selectedFile.value = null;
+  videoName.value = '';
   selectedExistingId.value = '';
   markers.value = [];
   snippets.value = [];
