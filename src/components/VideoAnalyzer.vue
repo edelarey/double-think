@@ -13,6 +13,17 @@
             <label class="form-label">Video Name (optional)</label>
             <input type="text" v-model="videoName" class="form-control mb-2" placeholder="Give this video a name..." />
             
+            <div class="mb-2">
+              <label class="form-label" title="Set the maximum file size allowing for upload">
+                Max File Size Limit: {{ maxFileSize }} MB
+              </label>
+              <select v-model.number="maxFileSize" class="form-select">
+                <option v-for="size in sizeOptions" :key="size" :value="size">
+                  {{ size }} MB
+                </option>
+              </select>
+            </div>
+
             <label class="form-label" title="Determines the maximum length of reversed audio segments. Smaller values preserve word order better.">
               Reversal Chunk Size: {{ reversalChunkSize }}s
             </label>
@@ -20,13 +31,13 @@
               type="range"
               class="form-range"
               min="0.1"
-              max="2.0"
+              max="5.0"
               step="0.1"
               v-model.number="reversalChunkSize"
             />
             <div class="d-flex justify-content-between small text-muted">
               <span>0.1s (More Granular)</span>
-              <span>2.0s (Longer Phrases)</span>
+              <span>5.0s (Longer Phrases)</span>
             </div>
           </div>
 
@@ -270,7 +281,12 @@
                     </span>
                     <strong class="ms-2">{{ snippet.name || 'Unnamed' }}</strong>
                   </div>
-                  <span class="badge bg-secondary">{{ formatTime(snippet.start) }} - {{ formatTime(snippet.end) }}</span>
+                  <div>
+                    <span class="badge bg-light text-dark border me-2" v-if="snippet.maxChunkDuration" title="Reversal Chunk Size">
+                      📏 {{ snippet.maxChunkDuration }}s
+                    </span>
+                    <span class="badge bg-secondary">{{ formatTime(snippet.start) }} - {{ formatTime(snippet.end) }}</span>
+                  </div>
                 </div>
                 <div class="card-body">
                   <!-- Video Snippets -->
@@ -507,6 +523,14 @@ const waveformContainer = ref(null);
 const selectedFile = ref(null);
 const videoName = ref('');
 const reversalChunkSize = ref(2.0);
+const maxFileSize = ref(200); // Default 200MB
+const sizeOptions = computed(() => {
+  const options = [];
+  for (let i = 50; i <= 1000; i += 50) {
+    options.push(i);
+  }
+  return options;
+});
 const isProcessing = ref(false);
 const error = ref(null);
 const analysisData = ref(null);
@@ -576,6 +600,13 @@ const handleFileSelect = (event) => {
 const processVideo = async () => {
   if (!selectedFile.value) return;
   
+  // Validate file size
+  const fileSizeMB = selectedFile.value.size / (1024 * 1024);
+  if (fileSizeMB > maxFileSize.value) {
+    error.value = `File size (${fileSizeMB.toFixed(2)} MB) exceeds the selected limit of ${maxFileSize.value} MB.`;
+    return;
+  }
+
   isProcessing.value = true;
   error.value = null;
   
@@ -840,7 +871,8 @@ const saveSnippet = async () => {
       playbackSpeed: playbackSpeed.value,
       name: snippetName.value,
       annotation: snippetAnnotation.value,
-      includeVideo: includeVideoInSnippet.value
+      includeVideo: includeVideoInSnippet.value,
+      maxChunkDuration: analysisData.value.maxChunkDuration // Pass the sample size used for analysis
     });
     
     const newSnippet = { ...response.data, _editing: false, _tempAnnotation: '', _tempName: '' };

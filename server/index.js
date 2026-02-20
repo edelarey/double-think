@@ -28,11 +28,14 @@ const upload = multer({
       const ext = path.extname(file.originalname);
       cb(null, `${file.fieldname}-${Date.now()}${ext}`);
     }
-  })
+  }),
+  limits: {
+    fileSize: 1000 * 1024 * 1024 // 1GB (1000MB) limit to allow client-side flexibility up to this hard cap
+  }
 });
 app.use(express.static(path.join(__dirname, '../dist')));
-app.use(express.json({ limit: '200mb' }));
-app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+app.use(express.json({ limit: '1000mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1000mb' }));
 
 // Serve static files from the 'outputs' directory
 const outputDir = path.join(__dirname, '../outputs');
@@ -978,6 +981,9 @@ app.post('/api/extract-video-snippet', async (req, res) => {
     } catch {
       return res.status(404).json({ error: 'Video analysis not found' });
     }
+
+    // Capture maxChunkDuration (sample size) from the original analysis data
+    const maxChunkDuration = analysisData.maxChunkDuration || 2.0;
     
     const timestamp = Date.now();
     const duration = parseFloat(end) - parseFloat(start);
@@ -1028,6 +1034,7 @@ app.post('/api/extract-video-snippet', async (req, res) => {
         duration,
         playbackSpeed: parseFloat(playbackSpeed) || 1,
         annotation: annotation || '',
+        maxChunkDuration,
         createdAt: new Date().toISOString()
       };
     } else {
@@ -1076,6 +1083,7 @@ app.post('/api/extract-video-snippet', async (req, res) => {
         duration,
         playbackSpeed: parseFloat(playbackSpeed) || 1,
         annotation: annotation || '',
+        maxChunkDuration,
         createdAt: new Date().toISOString()
       };
     }

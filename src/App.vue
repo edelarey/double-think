@@ -2,6 +2,11 @@
   <div class="container my-4">
     <h1 class="text-center mb-4">Double Think - Reverse Speech Analysis</h1>
     <ul class="nav nav-tabs">
+      <li class="nav-item">
+        <button class="nav-link" :class="{ active: activeTab === 'about' }" @click="activeTab = 'about'; $router.push('/about')">
+          ℹ️ About
+        </button>
+      </li>
       <!-- Video Analysis (Primary) -->
       <li class="nav-item">
         <button class="nav-link" :class="{ active: activeTab === 'video' }" @click="activeTab = 'video'; $router.push('/video')">
@@ -51,11 +56,12 @@ import { ref, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
-const activeTab = ref('video');
+const activeTab = ref('about');
 
 // Set active tab based on current route
 const updateActiveTab = (path) => {
-  if (path === '/video' || path.startsWith('/video?')) activeTab.value = 'video';
+  if (path === '/about') activeTab.value = 'about';
+  else if (path === '/video' || path.startsWith('/video?')) activeTab.value = 'video';
   else if (path === '/videos') activeTab.value = 'videos';
   else if (path === '/video-snippets') activeTab.value = 'video-snippets';
   else if (path === '/file') activeTab.value = 'file';

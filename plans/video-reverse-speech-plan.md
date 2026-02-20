@@ -107,7 +107,9 @@ Extract a segment of reversed audio from the video for saving and annotation.
   "start": 45.5,
   "end": 48.2,
   "playbackSpeed": 0.75,
-  "annotation": "Clear reversed phrase here"
+  "annotation": "Clear reversed phrase here",
+  "name": "Snippet Name",
+  "includeVideo": true // Optional, default false
 }
 ```
 
@@ -123,7 +125,8 @@ Extract a segment of reversed audio from the video for saving and annotation.
   "end": 48.2,
   "duration": 2.7,
   "annotation": "Clear reversed phrase here",
-  "playbackSpeed": 0.75// Original snippet speed for reference
+  "playbackSpeed": 0.75, // Original snippet speed for reference
+  "maxChunkDuration": 2.0 // Sample size used for reversal
 }
 ```
 
@@ -142,7 +145,21 @@ Extract a segment of reversed audio from the video for saving and annotation.
 
 ## Frontend Implementation Plan
 
-### 1. New Component: VideoAnalyzer.vue
+### 1. About Tab
+
+**New Component:** `AboutTab.vue`
+
+**Purpose:**
+Provide a comprehensive explanation of the application's purpose and usage instructions.
+
+**Content:**
+- Overview of Reverse Speech Analysis theory.
+- Instructions for Video Analysis (upload, playback, sync).
+- Instructions for Audio Analysis.
+- Explanation of Real-time mode.
+- Credits and version info.
+
+### 2. New Component: VideoAnalyzer.vue
 
 **Layout:**
 ```
@@ -169,7 +186,7 @@ Extract a segment of reversed audio from the video for saving and annotation.
 ├─────────────────────────────────────────────────────────────────┤
 │  Saved Snippets:                                                 │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ Snippet 1 (0:45-0:48, 0.75x)                                 │ │
+│  │ Snippet 1 (0:45-0:48, 0.75x) [Sample Size: 2.0s]            │ │
 │  │ [Reversed ▶] [Forward ▶] Annotation: Clear message          │ │
 │  │ [Download Reversed] [Download Forward] [Delete]              │ │
 │  └─────────────────────────────────────────────────────────────┘ │
@@ -183,6 +200,7 @@ Extract a segment of reversed audio from the video for saving and annotation.
 - Loop selected segment functionality
 - Volume boost slider (up to 200%)
 - Click-to-mark current timestamp
+- **Reversal Chunk Size Slider:** Allow users to adjust the chunk size (0.1s - 5.0s) for more granular or broader reversal analysis.
 
 ### 2. Timeline with Waveform
 
@@ -212,7 +230,8 @@ Use WaveSurfer.js to display the reversed audio waveform below the videos:
 Modify [`src/main.js`](src/main.js:14) routes:
 ```javascript
 const routes = [
-  { path: '/', redirect: '/video' },
+  { path: '/', redirect: '/about' },               // UPDATED - Default to About
+  { path: '/about', component: AboutTab },           // NEW - About Page
   { path: '/video', component: VideoAnalyzer },      // NEW - Primary
   { path: '/file', component: AudioAnalyzer },       // Keep for audio-only
   { path: '/realtime', component: RealTimeAnalyzer },
@@ -281,6 +300,7 @@ gainNode.connect(audioContext.destination);
 3. `src/composables/useVideoSync.js` - Video synchronization logic
 4. `src/composables/useMarkers.js` - Marker management
 5. `src/composables/useVolumeBoost.js` - Web Audio volume control
+6. `src/components/AboutTab.vue` - About page with instructions
 
 ### Files to Modify
 1. `src/main.js` - Update routes
@@ -314,4 +334,4 @@ gainNode.connect(audioContext.destination);
 6. Marker system (save/edit/delete)
 7. VideoBrowser component
 8. Route updates and navigation
-9. Testing and refinement
+9. About Tab and Final Polish
