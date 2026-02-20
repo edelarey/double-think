@@ -160,6 +160,48 @@ export async function processAudio(inputPath, outputPath, maxChunkDuration = 2.0
           outputChannels[c].set(reversedSlice, seg.start);
       }
     }
+    
+    // Also reverse the non-speech segments to ensure full reversal
+    // If we only reverse speech segments, the "silence" remains forward, leading to a mixed signal
+    // For true reverse speech analysis, the entire timeline is usually reversed linearly
+    // BUT the requirement was "chunk-based" reversal while maintaining forward time flow?
+    // Let's re-read the intent.
+    // "Reverse Speech" usually means playing the file backwards.
+    // However, the user asked for "reversal chunk size". This implies "Forward Reversal" (Granular Synthesis).
+    // The current implementation does "Forward Reversal" only on speech segments.
+    // Gaps between speech segments are NOT reversed, leaving them as original forward audio.
+    // Use Case: "I just reversed a video... but all of a sudden it is just playing the audio forward"
+    // Issue: If VAD fails or threshold is too high, `finalSegments` is empty or sparse, leaving most audio untouched (forward).
+    // Fix: We must process *everything* in chunks, regardless of VAD, to ensure consistent reversal effect.
+    // OR we default to reversing everything if no speech is detected.
+    
+    // DECISION: To guarantee "Reverse Speech" effect, we should chunk *the entire file* if the goal is "Chunk-based Reversal".
+    // Relying on VAD for the core effect makes it flaky (as observed by the user).
+    // Let's override the VAD-based segmentation with a uniform chunking approach across the whole file.
+    
+    // OVERRIDE: Clear existing output and refill with uniform chunks
+    // This effectively implements a "Granular Reverse" effect on the whole file.
+    console.log("Applying uniform chunk reversal across entire file...");
+    
+    const chunkSamples = Math.floor(maxChunkDuration * sampleRate);
+    
+    for (let c = 0; c < numChannels; c++) {
+        const originalChannel = channelData[c];
+        const outputChannel = outputChannels[c];
+        
+        for (let i = 0; i < signal.length; i += chunkSamples) {
+            const end = Math.min(i + chunkSamples, signal.length);
+            const len = end - i;
+            
+            // Create reversed chunk
+            const reversedChunk = new Float32Array(len);
+            for(let k = 0; k < len; k++) {
+                reversedChunk[k] = originalChannel[end - 1 - k];
+            }
+            
+            outputChannel.set(reversedChunk, i);
+        }
+    }
 
     // 4. Encode
     const encoded = await WavEncoder.encode({
