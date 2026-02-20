@@ -89,8 +89,8 @@
             <span class="me-3" v-if="analysisData.duration">
               <strong>Duration:</strong> {{ formatDuration(analysisData.duration) }}
             </span>
-            <span>
-              <strong>Created:</strong> {{ new Date(analysisData.createdAt).toLocaleDateString() }}
+            <span class="me-3" v-if="analysisData.createdAt">
+              <strong>Created:</strong> {{ formatDate(analysisData.createdAt) }}
             </span>
           </div>
         </div>
@@ -1020,6 +1020,17 @@ const formatTime = (seconds) => {
 const formatDuration = (seconds) => {
   if (!seconds) return 'Unknown duration';
   return formatTime(seconds);
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown Date';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    return date.toLocaleDateString();
+  } catch (e) {
+    return 'Error Formatting Date';
+  }
 };
 
 // Lifecycle
