@@ -8,10 +8,28 @@
         <div class="mb-3">
           <label class="form-label">Upload Video File</label>
           <input type="file" accept="video/*" class="form-control mb-2" @change="handleFileSelect" />
-          <div v-if="selectedFile" class="mb-2">
+          
+          <div v-if="selectedFile" class="mb-3">
             <label class="form-label">Video Name (optional)</label>
-            <input type="text" v-model="videoName" class="form-control" placeholder="Give this video a name..." />
+            <input type="text" v-model="videoName" class="form-control mb-2" placeholder="Give this video a name..." />
+            
+            <label class="form-label" title="Determines the maximum length of reversed audio segments. Smaller values preserve word order better.">
+              Reversal Chunk Size: {{ reversalChunkSize }}s
+            </label>
+            <input
+              type="range"
+              class="form-range"
+              min="0.1"
+              max="2.0"
+              step="0.1"
+              v-model.number="reversalChunkSize"
+            />
+            <div class="d-flex justify-content-between small text-muted">
+              <span>0.1s (More Granular)</span>
+              <span>2.0s (Longer Phrases)</span>
+            </div>
           </div>
+
           <button class="btn btn-primary" :disabled="!selectedFile" @click="processVideo">
             Process Video
           </button>
@@ -47,10 +65,23 @@
       <!-- Main Analysis UI -->
       <div v-if="analysisData && !isProcessing">
         <!-- New Analysis Button -->
-        <div class="mb-3">
+        <div class="mb-3 d-flex justify-content-between align-items-center">
           <button class="btn btn-outline-secondary btn-sm" @click="resetAnalysis">
             ← New Analysis
           </button>
+          
+          <!-- Analysis Metadata Display -->
+          <div class="text-muted small">
+            <span class="me-3" v-if="analysisData.maxChunkDuration">
+              <strong>Chunk Size:</strong> {{ analysisData.maxChunkDuration }}s
+            </span>
+            <span class="me-3" v-if="analysisData.duration">
+              <strong>Duration:</strong> {{ formatDuration(analysisData.duration) }}
+            </span>
+            <span>
+              <strong>Created:</strong> {{ new Date(analysisData.createdAt).toLocaleDateString() }}
+            </span>
+          </div>
         </div>
         
         <!-- Dual Video Players -->
@@ -475,6 +506,7 @@ const waveformContainer = ref(null);
 // State
 const selectedFile = ref(null);
 const videoName = ref('');
+const reversalChunkSize = ref(2.0);
 const isProcessing = ref(false);
 const error = ref(null);
 const analysisData = ref(null);
@@ -552,6 +584,7 @@ const processVideo = async () => {
   if (videoName.value.trim()) {
     formData.append('name', videoName.value.trim());
   }
+  formData.append('maxChunkDuration', reversalChunkSize.value);
   
   try {
     const response = await axios.post(`${API_BASE}/api/process-video`, formData, {

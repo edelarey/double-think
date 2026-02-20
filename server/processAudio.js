@@ -8,9 +8,10 @@ import WavEncoder from 'wav-encoder';
  * 
  * @param {string} inputPath - Path to input WAV file
  * @param {string} outputPath - Path to output WAV file
+ * @param {number} maxChunkDuration - Maximum duration for a single reversed segment in seconds (default: 2.0)
  * @returns {Promise<Array>} - List of processed segments {start, end} in seconds
  */
-export async function processAudio(inputPath, outputPath) {
+export async function processAudio(inputPath, outputPath, maxChunkDuration = 2.0) {
   try {
     // 1. Read and Decode
     const buffer = await fs.readFile(inputPath);
@@ -36,9 +37,9 @@ export async function processAudio(inputPath, outputPath) {
     const minSpeechSamples = Math.floor(0.25 * sampleRate);
     // Merge segments closer than this (e.g., 200ms)
     const mergeDistanceSamples = Math.floor(0.2 * sampleRate);
-    // Maximum duration for a single reversed segment (2 seconds)
+    // Maximum duration for a single reversed segment (default 2 seconds)
     // Longer segments are split to ensure proper reversal alignment
-    const maxSegmentSamples = Math.floor(2.0 * sampleRate);
+    const maxSegmentSamples = Math.floor(maxChunkDuration * sampleRate);
     
     // Calculate Energy profile
     // Map 1 for speech, 0 for silence

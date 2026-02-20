@@ -31,8 +31,8 @@ const upload = multer({
   })
 });
 app.use(express.static(path.join(__dirname, '../dist')));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
 // Serve static files from the 'outputs' directory
 const outputDir = path.join(__dirname, '../outputs');
@@ -605,6 +605,8 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
     const timestamp = Date.now();
     const analysisId = `video_${timestamp}`;
     const videoName = req.body.name || null; // Optional video name
+    // Extract reversal chunk size from request (default 2.0s)
+    const maxChunkDuration = parseFloat(req.body.maxChunkDuration) || 2.0;
     
     // Define output paths
     const originalVideoFileName = `original_${timestamp}${ext}`;
@@ -647,7 +649,8 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
     
     // Use our custom processor instead of simple ffmpeg reversal
     // This maintains the timeline but reverses local speech segments
-    const processedSegments = await processAudio(extractedAudioPath, reversedAudioPath);
+    console.log(`Processing with max reversed chunk size: ${maxChunkDuration}s`);
+    const processedSegments = await processAudio(extractedAudioPath, reversedAudioPath, maxChunkDuration);
     
     console.log(`Audio processed with ${processedSegments.length} reversed segments.`);
     
@@ -696,6 +699,7 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
     const analysisData = {
       analysisId,
       name: videoName,
+      maxChunkDuration,
       originalVideoPath: originalVideoPath,
       reversedVideoPath: reversedVideoPath,
       extractedAudioPath: extractedAudioPath,
@@ -704,6 +708,7 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
       reversedVideoUrl: `/outputs/videos/${reversedVideoFileName}`,
       reversedAudioUrl: `/outputs/audio/${reversedAudioFileName}`,
       duration,
+      maxChunkDuration,
       createdAt: new Date().toISOString(),
       markers: [],
       snippets: []

@@ -114,8 +114,15 @@ export function useVideoSync(originalVideoRef, reversedVideoRef) {
     }
   };
 
-  // Separate controls
-  const playOriginal = () => originalVideoRef.value?.play();
+  // Separate controls for original video
+  // When playing original separately, first sync to current timeline position
+  const playOriginal = () => {
+    if (!originalVideoRef.value) return;
+    // Ensure original is at the same position as the timeline before playing
+    originalVideoRef.value.currentTime = currentTime.value;
+    originalVideoRef.value.play();
+    startSync(); // Ensure time updates continue
+  };
   const pauseOriginal = () => originalVideoRef.value?.pause();
   const toggleOriginal = () => {
     if (originalVideoRef.value?.paused) playOriginal();
@@ -132,19 +139,16 @@ export function useVideoSync(originalVideoRef, reversedVideoRef) {
   };
   
   // Seek to a specific time
+  // Waveform is the primary source of truth - always seek BOTH videos
   const seekTo = (time) => {
-    if (!reversedVideoRef.value) return;
-    
     isSeeking = true;
     const clampedTime = Math.max(0, Math.min(time, duration.value));
     
-    reversedVideoRef.value.currentTime = clampedTime;
-    
-    // Always sync seek if synced, OR if user wants to align them manually even if playback is separate?
-    // Usually "separate playback" implies "I want to watch X then Y".
-    // But maintaining timeline sync is useful.
-    // Let's implement: If Synced, seek both. If not, seek reversed (Master).
-    if (isSynced.value && originalVideoRef.value) {
+    // Always seek both videos to keep them aligned with the waveform position
+    if (reversedVideoRef.value) {
+      reversedVideoRef.value.currentTime = clampedTime;
+    }
+    if (originalVideoRef.value) {
       originalVideoRef.value.currentTime = clampedTime;
     }
     
