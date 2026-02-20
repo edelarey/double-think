@@ -507,12 +507,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { useRoute } from 'vue-router';
 import axios from 'axios';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/plugins/regions';
 import { useVideoSync, useMarkers, useVolumeBoost } from '../composables';
 
 const API_BASE = 'http://localhost:3000';
+const route = useRoute();
 
 // Refs for video elements
 const originalVideoEl = ref(null);
@@ -1039,8 +1041,14 @@ const formatDate = (dateString) => {
 };
 
 // Lifecycle
-onMounted(() => {
-  fetchExistingVideos();
+onMounted(async () => {
+  await fetchExistingVideos();
+  
+  // Check for load param in URL
+  if (route.query.load) {
+    selectedExistingId.value = route.query.load;
+    loadExistingAnalysis();
+  }
 });
 
 onUnmounted(() => {
