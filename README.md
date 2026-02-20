@@ -16,7 +16,6 @@ The application features advanced audio processing, video synchronization, and a
 ### 🔊 Audio Analysis
 *   **Input Support**: Process MP3, WAV, and other standard audio formats.
 *   **Speed Control**: Variable playback speed (0.25x - 2.0x) for both forward and reverse modes.
-*   **Automated Detection**: Algorithms to detect potential speech segments based on energy and formant shifts.
 *   **Real-time Analysis**: Tools for frequency analysis and spectrum visualization.
 
 ### 📂 Snippet Library
