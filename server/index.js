@@ -606,8 +606,19 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
     const inputPath = req.file.path;
     const ext = path.extname(req.file.originalname).toLowerCase();
     const timestamp = Date.now();
-    const analysisId = `video_${timestamp}`;
     const videoName = req.body.name || null; // Optional video name
+    
+    // Create a safe analysis ID that incorporates the name if available
+    let analysisIdPrefix = 'video';
+    if (videoName) {
+      // Sanitize name: remove non-alphanumeric chars, replace spaces with underscores, limit length
+      const safeName = videoName.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_').toLowerCase().substring(0, 30);
+      if (safeName) {
+        analysisIdPrefix = `video_${safeName}`;
+      }
+    }
+    
+    const analysisId = `${analysisIdPrefix}_${timestamp}`;
     // Extract reversal chunk size from request (default 2.0s)
     const maxChunkDuration = parseFloat(req.body.maxChunkDuration) || 2.0;
     

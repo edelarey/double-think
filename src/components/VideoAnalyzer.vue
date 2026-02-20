@@ -698,12 +698,17 @@ const initializeWaveform = () => {
   const audioUrl = analysisData.value?.fullReversedAudioUrl ||
                    (analysisData.value?.reversedAudioUrl ? `${API_BASE}${analysisData.value.reversedAudioUrl}` : null);
 
-  if (!waveformContainer.value || !audioUrl) {
-    console.warn('Cannot initialize waveform: Missing container or URL', { container: !!waveformContainer.value, url: audioUrl });
-    // Retry once if container is missing (race condition with v-if)
-    if (!waveformContainer.value && analysisData.value) {
-      setTimeout(initializeWaveform, 100);
-    }
+  if (!audioUrl) {
+    console.warn('Cannot initialize waveform: Missing URL', { url: audioUrl });
+    return;
+  }
+
+  // Ensure container is available
+  if (!waveformContainer.value) {
+    // If not available yet, wait for next tick or retry slightly later
+    // This handles the race condition where v-if hasn't rendered the element yet
+    console.debug('Waveform container not ready, retrying...');
+    setTimeout(initializeWaveform, 50);
     return;
   }
   
