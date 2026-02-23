@@ -1340,15 +1340,20 @@ app.post('/api/stitch-snippet', async (req, res) => {
         const tempRevVideo50x = path.join(snippetsDir, `temp_pkg_rev_vid50x_${timestamp}.mp4`);
 
         // 1. Forward Video @ fwdSpeed
+        // Note: We avoid re-encoding if speed is 1.0 to prevent duration loss issues
         await new Promise((resolve, reject) => {
-          ffmpeg(forwardFilePath)
-            .videoFilters(`setpts=${1/fwdSpeed}*PTS`)
-            .audioFilters(getAtempoFilters(fwdSpeed))
-            .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
-            .output(tempForwardVideo)
-            .on('end', resolve)
-            .on('error', reject)
-            .run();
+          const cmd = ffmpeg(forwardFilePath);
+          
+          if (Math.abs(fwdSpeed - 1.0) > 0.01) {
+            cmd.videoFilters(`setpts=${1/fwdSpeed}*PTS`)
+               .audioFilters(getAtempoFilters(fwdSpeed));
+          }
+          
+          cmd.outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+             .output(tempForwardVideo)
+             .on('end', resolve)
+             .on('error', reject)
+             .run();
         });
 
         // 2. Reversed Video @ 1.0x (Force 1.0x as per requirements)

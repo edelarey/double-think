@@ -151,9 +151,27 @@
               
               <div class="vr mx-2"></div>
               
-              <!-- Time Display -->
-              <div class="time-display">
-                <span class="font-monospace">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
+              <!-- Time Display & Jump -->
+              <div class="d-flex align-items-center gap-1 bg-dark text-white rounded px-2 py-1">
+                <span class="font-monospace small">{{ formatTime(currentTime) }}</span>
+                <span class="text-secondary">/</span>
+                <span class="font-monospace small">{{ formatTime(duration) }}</span>
+                
+                <div class="vr bg-secondary mx-2"></div>
+                
+                <form @submit.prevent="handleJumpToTime" class="d-flex align-items-center">
+                  <input
+                    v-model="jumpToTimeInput"
+                    type="text"
+                    class="form-control form-control-sm bg-secondary text-white border-0 py-0 px-1"
+                    placeholder="SS or MM:SS"
+                    style="width: 70px; font-family: monospace; height: 22px;"
+                    title="Jump to time (e.g. 1:30 or 90)"
+                  />
+                  <button type="submit" class="btn btn-sm btn-link text-white p-0 ms-1" title="Go">
+                    ↦
+                  </button>
+                </form>
               </div>
             </div>
 
@@ -643,6 +661,7 @@ const sizeOptions = computed(() => {
   }
   return options;
 });
+const jumpToTimeInput = ref('');
 const isProcessing = ref(false);
 const error = ref(null);
 const analysisData = ref(null);
@@ -1161,6 +1180,33 @@ const deleteMarkerById = async (markerId) => {
   const success = await deleteMarker(markerId);
   if (success) {
     markers.value = markers.value.filter(m => m.id !== markerId);
+  }
+};
+
+const handleJumpToTime = () => {
+  if (!jumpToTimeInput.value) return;
+
+  const parts = jumpToTimeInput.value.split(':');
+  let seconds = 0;
+
+  if (parts.length === 2) {
+    // MM:SS format
+    const minutes = parseInt(parts[0], 10);
+    const secs = parseFloat(parts[1]);
+    if (!isNaN(minutes) && !isNaN(secs)) {
+      seconds = minutes * 60 + secs;
+    }
+  } else if (parts.length === 1) {
+    // SS format
+    const secs = parseFloat(parts[0]);
+    if (!isNaN(secs)) {
+      seconds = secs;
+    }
+  }
+
+  if (seconds >= 0 && seconds <= duration.value) {
+    seekTo(seconds);
+    jumpToTimeInput.value = ''; // Clear input after jump
   }
 };
 
