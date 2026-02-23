@@ -1,6 +1,6 @@
 # DoubleThink
 
-DoubleThink is a web application for analyzing reverse speech in audio and video files, inspired by George Orwell's concept of holding contradictory beliefs. It allows users to upload content, process it to reveal potential reverse speech messages ("reversals"), and manage findings.
+DoubleThink is a web application for analyzing reverse speech in audio and video files, inspired by George Orwell's concept of holding contradictory beliefs and David Oates' Reverse Speech work. It allows users to upload content, process it to reveal potential reverse speech messages ("reversals"), and manage findings.
 
 The application features advanced audio processing, video synchronization, and a comprehensive library for managing snippets. Built with Vue.js, Express, FFmpeg, and audio visualization libraries.
 
