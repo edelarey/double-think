@@ -201,14 +201,18 @@ Provide a comprehensive explanation of the application's purpose and usage instr
 - Volume boost slider (up to 200%)
 - Click-to-mark current timestamp
 - **Reversal Chunk Size Slider:** Allow users to adjust the chunk size (0.1s - 5.0s) for more granular or broader reversal analysis.
+- **Export Capabilities:**
+  - **Expert Package**: Auto-stitches a 4-part sequence (Forward -> Rev 1x -> Rev 0.75x -> Rev 0.5x).
+  - **Stitched Audio/Video**: Simple concatenation of Forward and Reverse clips.
 
-### 2. Timeline with Waveform
+### 2. Dual Timeline with Waveform
 
-Use WaveSurfer.js to display the reversed audio waveform below the videos:
-- Visual representation helps identify potential phonetic patterns
-- Click on waveform to seek both videos
-- Region selection for loop playback
-- Markers displayed as visual pins on the timeline
+Use WaveSurfer.js to display independent waveforms for both Forward and Reversed audio:
+- **Forward Waveform**: Green visualization, controls the original video track.
+- **Reverse Waveform**: Red visualization, controls the reversed analysis track.
+- Independent region selection for each track.
+- Visual representation helps identify potential phonetic patterns.
+- Click on waveform to seek videos (synchronized or independent based on Sync mode).
 
 ### 3. Playback Controls
 

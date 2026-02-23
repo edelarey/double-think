@@ -491,23 +491,39 @@
                       ✏️ Edit
                     </button>
                     
-                    <div class="dropdown">
-                      <button class="btn btn-sm btn-success dropdown-toggle" type="button" :id="'exportDropdown' + snippet.id" data-bs-toggle="dropdown" aria-expanded="false" :disabled="exportingSnippets[snippet.id]?.any">
+                    <!-- Export Buttons -->
+                    <div class="d-flex gap-1">
+                       <button
+                         type="button"
+                         class="btn btn-sm btn-success fw-bold"
+                         @click="exportCompletePackage(snippet)"
+                         :disabled="exportingSnippets[snippet.id]?.any"
+                         title="Export Complete Package (Fwd + 3x Rev)"
+                       >
                          <span v-if="exportingSnippets[snippet.id]?.any" class="spinner-border spinner-border-sm me-1"></span>
-                         📤 Export
-                      </button>
-                      <ul class="dropdown-menu" :aria-labelledby="'exportDropdown' + snippet.id">
-                         <li>
-                            <button class="dropdown-item" @click="exportStitchedAudio(snippet)">🎵 Stitched Audio</button>
-                         </li>
-                         <li v-if="snippet.type === 'video'">
-                            <button class="dropdown-item" @click="exportStitchedVideo(snippet)">🎬 Stitched Video</button>
-                         </li>
-                         <li><hr class="dropdown-divider"></li>
-                         <li>
-                            <button class="dropdown-item fw-bold" @click="exportCompletePackage(snippet)">📦 Complete Package</button>
-                         </li>
-                      </ul>
+                         📦 Expert Pkg
+                       </button>
+
+                       <button
+                         type="button"
+                         class="btn btn-sm btn-outline-success"
+                         @click="exportStitchedAudio(snippet)"
+                         :disabled="exportingSnippets[snippet.id]?.any"
+                         title="Export Stitched Audio (Fwd + Rev)"
+                       >
+                          🎵 Audio Only
+                       </button>
+
+                       <button
+                         v-if="snippet.type === 'video'"
+                         type="button"
+                         class="btn btn-sm btn-outline-success"
+                         @click="exportStitchedVideo(snippet)"
+                         :disabled="exportingSnippets[snippet.id]?.any"
+                         title="Export Stitched Video (Fwd + Rev)"
+                       >
+                          🎬 Video Only
+                       </button>
                     </div>
               
                     <a :href="snippet.url" download class="btn btn-sm btn-outline-primary">⬇ Reversed</a>
@@ -1284,6 +1300,7 @@ const exportStitchedVideo = async (snippet) => {
 };
 
 const exportCompletePackage = async (snippet) => {
+  console.log('🎯 exportCompletePackage called for snippet:', snippet.id);
   if (!exportingSnippets.value[snippet.id]) {
     exportingSnippets.value[snippet.id] = {};
   }
@@ -1292,6 +1309,7 @@ const exportCompletePackage = async (snippet) => {
 
   try {
      const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
+     console.log('📊 Export speeds:', speeds);
 
      const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
       snippetId: snippet.id,

@@ -26,8 +26,8 @@
                     <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Dual video playback (Original & Reversed)</li>
                     <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Adjustable Reversal Chunk Size (0.1s - 5.0s)</li>
                     <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Synchronized scrubbing</li>
-                    <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Waveform visualization</li>
-                    <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Save interesting snippets (Video/Audio)</li>
+                    <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Dual Waveforms (Forward & Reverse)</li>
+                    <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Expert Export Package (4-part sequence)</li>
                   </ul>
                 </div>
               </div>
@@ -79,11 +79,11 @@
                     <li>Go to the <strong>Video Analysis</strong> tab.</li>
                     <li>Click <strong>Upload Video</strong> and select an MP4 file.</li>
                     <li>Adjust the <strong>Reversal Chunk Size</strong> slider if needed (0.1s - 5.0s).</li>
-                    <li>Wait for the server to process the video (extract and reverse audio).</li>
-                    <li>Use the playback controls to listen to the reversed audio while watching the video.</li>
-                    <li>If you hear something interesting, drag on the waveform to select a region.</li>
-                    <li>Click <strong>Loop Selection</strong> to listen repeatedly.</li>
-                    <li>Click <strong>Save Snippet</strong> to store the finding for later review.</li>
+                    <li>Wait for the server to process the video. You will see two players: <strong>Original</strong> and <strong>Reversed</strong>.</li>
+                    <li>Use the **Sync Toggle** to play them together or separately.</li>
+                    <li>If you hear something interesting, drag on either the Forward (Green) or Reverse (Red) waveform to select a region.</li>
+                    <li>Click <strong>Save Snippet</strong> to store the finding.</li>
+                    <li>Use the **Export Buttons** to download an "Expert Package" (Forward + 3 Reverse speeds) or simple stitched clips.</li>
                   </ol>
                 </div>
               </div>

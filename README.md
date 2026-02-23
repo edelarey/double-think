@@ -22,10 +22,14 @@ The application features advanced audio processing, video synchronization, and a
 *   **Unified Storage**: Manage both Audio and Video snippets in one place.
 *   **Metadata Tracking**: Automatically saves playback speed, reversal chunk size, and timestamps.
 *   **Annotation**: Add notes and labels to your discoveries.
-*   **Export Options**: Download reversed segments, forward segments, or stitched versions (Forward + Reverse).
+*   **Multi-Format Export**:
+    *   **📦 Expert Package**: A comprehensive 4-part analyis sequence: (1) Forward Clip (at selected speed), (2) Reverse Clip at 1x speed, (3) Reverse Clip at 0.75x speed, (4) Reverse Clip at 0.5x speed.
+    *   **🎵 Audio Only**: Stitched Forward + Reversed audio file.
+    *   **🎬 Video Only**: Stitched Forward + Reversed video file.
 
 ### ⚙️ Backend Power
-*   **Large File Support**: Upload limits increased to **1GB** to accommodate high-quality video files.
+*   **Large File Support**: Upload limits increased to **1GB** (configurable) to accommodate high-quality video files.
+*   **Dual Independent Waveforms**: Separate waveform visualization and control for both Forward and Reversed audio tracks.
 *   **FFmpeg Processing**: robust server-side processing for format conversion, stream extraction, and audio manipulation.
 *   **Persistent Storage**: Analysis results and metadata are saved as JSON for future retrieval.
 
@@ -79,12 +83,13 @@ Before setting up, ensure the following are installed:
 
 ### Workflow Example: Video Analysis
 1.  Navigate to the **Video Analysis** tab.
-2.  Upload an MP4 video file.
+2.  Upload an MP4 video file (up to 1GB).
 3.  Set the **Chunk Size** (e.g., 2.0s) to determine how the audio is reversed.
-4.  Once processed, play the video. The audio track will be the reversed version.
-5.  If you hear a potential reversal, drag on the waveform to select that timeframe.
-6.  Click **"Save Video Snippet"** or **"Save Audio Snippet"**.
-7.  Go to the **Snippet Library** to review, annotate, or download your finding.
+4.  Once processed, you will see two video players: **Original** (Left) and **Reversed** (Right).
+5.  Use the **Sync Toggle** to control them together or independently.
+6.  Use the **Forward** and **Reverse** waveforms to navigate and select specific regions of interest.
+7.  Click **"Save Snippet"** to save your selection to the library.
+8.  Use the **Export Buttons** (Expert Pkg, Audio, Video) to download your findings immediately or from the library later.
 
 ## 🏗️ Project Structure
 

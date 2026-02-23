@@ -173,24 +173,13 @@
               
               <!-- Actions -->
               <div class="d-flex gap-2 flex-wrap">
-                <div class="dropdown">
-                  <button class="btn btn-sm btn-success dropdown-toggle" type="button" :id="'exportDropdown' + snippet.id" data-bs-toggle="dropdown" aria-expanded="false" :disabled="exportingSnippets[snippet.id]?.any">
-                     <span v-if="exportingSnippets[snippet.id]?.any" class="spinner-border spinner-border-sm me-1"></span>
-                     📤 Export
-                  </button>
-                  <ul class="dropdown-menu" :aria-labelledby="'exportDropdown' + snippet.id">
-                     <li>
-                        <button class="dropdown-item" @click="exportStitchedAudio(snippet)">🎵 Stitched Audio</button>
-                     </li>
-                     <li v-if="snippet.type === 'video'">
-                        <button class="dropdown-item" @click="exportStitchedVideo(snippet)">🎬 Stitched Video</button>
-                     </li>
-                     <li><hr class="dropdown-divider"></li>
-                     <li>
-                        <button class="dropdown-item fw-bold" @click="exportCompletePackage(snippet)">📦 Complete Package</button>
-                     </li>
-                  </ul>
-                </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-success"
+                @click="exportCompletePackage(snippet)"
+              >
+                📤 Export {{ snippet.type === 'video' ? 'Video' : 'Audio' }}
+              </button>
 
                 <a :href="snippet.url" download class="btn btn-sm btn-outline-danger">
                   ⬇ Reversed
@@ -267,6 +256,13 @@ const snippetToDelete = ref(null);
 const deletingId = ref(null);
 const exportingSnippets = ref({});
 
+// Helper to ensure reactive state exists
+const initExportState = (id) => {
+  if (!exportingSnippets.value[id]) {
+    exportingSnippets.value[id] = { any: false, audio: false, video: false, package: false };
+  }
+};
+
 // Fetch all video snippets
 const fetchSnippets = async () => {
   loading.value = true;
@@ -284,6 +280,7 @@ const fetchSnippets = async () => {
     // Initialize playback speeds from saved values
     snippets.value.forEach(snippet => {
       snippetPlaybackSpeeds.value[snippet.id] = snippet.playbackSpeed || 1;
+      initExportState(snippet.id);
     });
   } catch (err) {
     error.value = 'Failed to load snippets: ' + (err.response?.data?.error || err.message);
@@ -429,11 +426,14 @@ const exportStitchedVideo = async (snippet) => {
 };
 
 const exportCompletePackage = async (snippet) => {
-  if (!exportingSnippets.value[snippet.id]) exportingSnippets.value[snippet.id] = {};
+  alert('Button clicked! Snippet ID: ' + snippet.id);
+  console.log('Initiating complete package export for snippet:', snippet.id);
+  initExportState(snippet.id);
   exportingSnippets.value[snippet.id].package = true;
   exportingSnippets.value[snippet.id].any = true;
 
   try {
+     console.log('Starting export for snippet:', snippet.id);
      const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
       snippetId: snippet.id,
       analysisId: snippet.analysisId,
@@ -442,15 +442,19 @@ const exportCompletePackage = async (snippet) => {
       exportType: 'complete_package'
     }, { responseType: 'blob' });
 
+    console.log('Export response received');
     const isVideo = snippet.type === 'video';
     const ext = isVideo ? 'mp4' : 'wav';
     downloadBlob(response.data, `${snippet.name || 'snippet'}_package.${ext}`);
 
   } catch (err) {
+     console.error('Export error:', err);
      error.value = 'Failed to export package: ' + (err.response?.data?.error || err.message);
   } finally {
-     exportingSnippets.value[snippet.id].package = false;
-     exportingSnippets.value[snippet.id].any = false;
+     if (exportingSnippets.value[snippet.id]) {
+        exportingSnippets.value[snippet.id].package = false;
+        exportingSnippets.value[snippet.id].any = false;
+     }
   }
 };
 

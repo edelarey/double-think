@@ -1350,8 +1350,8 @@ app.post('/api/stitch-snippet', async (req, res) => {
             .run();
         });
 
-        // 2. Reversed Video @ 1.0x (using revSpeed from user, usually 1x, enabling slow motion if selected)
-        const speed1x = revSpeed;
+        // 2. Reversed Video @ 1.0x (Force 1.0x as per requirements)
+        const speed1x = 1.0;
         await new Promise((resolve, reject) => {
           ffmpeg(reversedFilePath)
             .videoFilters(`setpts=${1/speed1x}*PTS`)
@@ -1431,8 +1431,8 @@ app.post('/api/stitch-snippet', async (req, res) => {
             .run();
         });
 
-         // 2. Reversed Audio @ 1.0x (using user speed)
-        const speed1x = revSpeed;
+         // 2. Reversed Audio @ 1.0x (Force 1.0x as per requirements)
+        const speed1x = 1.0;
         await new Promise((resolve, reject) => {
           ffmpeg(reversedFilePath)
             .audioFilters(getAtempoFilters(speed1x))
