@@ -1300,7 +1300,6 @@ const exportStitchedVideo = async (snippet) => {
 };
 
 const exportCompletePackage = async (snippet) => {
-  console.log('🎯 exportCompletePackage called for snippet:', snippet.id);
   if (!exportingSnippets.value[snippet.id]) {
     exportingSnippets.value[snippet.id] = {};
   }
@@ -1309,7 +1308,6 @@ const exportCompletePackage = async (snippet) => {
 
   try {
      const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
-     console.log('📊 Export speeds:', speeds);
 
      const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
       snippetId: snippet.id,
