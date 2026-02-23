@@ -77,11 +77,23 @@
                 </h6>
               </div>
               <div>
-                <span class="badge bg-secondary me-1">{{ formatTime(snippet.start) }} - {{ formatTime(snippet.end) }}</span>
+                <span class="badge bg-secondary me-1" title="Duration">
+                   {{ (snippet.end - snippet.start).toFixed(2) }}s
+                </span>
                 <span class="badge bg-info">{{ snippet.playbackSpeed }}x</span>
               </div>
             </div>
             <div class="card-body">
+              <!-- Ranges -->
+              <div class="mb-3 small">
+                 <div class="d-flex justify-content-between text-danger">
+                    <span><strong>Reverse:</strong> {{ formatTime(snippet.start) }} - {{ formatTime(snippet.end) }}</span>
+                 </div>
+                 <div class="d-flex justify-content-between text-success">
+                    <span><strong>Forward:</strong> {{ formatTime(snippet.forwardStart || snippet.start) }} - {{ formatTime(snippet.forwardEnd || snippet.end) }}</span>
+                 </div>
+              </div>
+
               <!-- Name Edit -->
               <div class="mb-3">
                 <div v-if="!snippet._editingName" class="d-flex align-items-center gap-2">
@@ -161,25 +173,44 @@
               
               <!-- Actions -->
               <div class="d-flex gap-2 flex-wrap">
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-success dropdown-toggle" type="button" :id="'exportDropdown' + snippet.id" data-bs-toggle="dropdown" aria-expanded="false" :disabled="exportingSnippets[snippet.id]?.any">
+                     <span v-if="exportingSnippets[snippet.id]?.any" class="spinner-border spinner-border-sm me-1"></span>
+                     📤 Export
+                  </button>
+                  <ul class="dropdown-menu" :aria-labelledby="'exportDropdown' + snippet.id">
+                     <li>
+                        <button class="dropdown-item" @click="exportStitchedAudio(snippet)">🎵 Stitched Audio</button>
+                     </li>
+                     <li v-if="snippet.type === 'video'">
+                        <button class="dropdown-item" @click="exportStitchedVideo(snippet)">🎬 Stitched Video</button>
+                     </li>
+                     <li><hr class="dropdown-divider"></li>
+                     <li>
+                        <button class="dropdown-item fw-bold" @click="exportCompletePackage(snippet)">📦 Complete Package</button>
+                     </li>
+                  </ul>
+                </div>
+
                 <a :href="snippet.url" download class="btn btn-sm btn-outline-danger">
-                  ⬇ Download Reversed
+                  ⬇ Reversed
                 </a>
                 <a :href="snippet.forwardUrl" download class="btn btn-sm btn-outline-success">
-                  ⬇ Download Forward
+                  ⬇ Forward
                 </a>
-                <router-link 
-                  :to="`/video?load=${snippet.analysisId}`" 
+                <router-link
+                  :to="`/video?load=${snippet.analysisId}`"
                   class="btn btn-sm btn-outline-primary"
                 >
-                  Open Source Video
+                  Open Video
                 </router-link>
-                <button 
+                <button
                   class="btn btn-sm btn-outline-danger"
                   @click="confirmDelete(snippet)"
                   :disabled="deletingId === snippet.id"
                 >
                   <span v-if="deletingId === snippet.id" class="spinner-border spinner-border-sm"></span>
-                  Delete
+                  🗑️
                 </button>
               </div>
             </div>
@@ -234,6 +265,7 @@ const snippetPlaybackSpeeds = ref({});
 const audioRefs = ref({});
 const snippetToDelete = ref(null);
 const deletingId = ref(null);
+const exportingSnippets = ref({});
 
 // Fetch all video snippets
 const fetchSnippets = async () => {
@@ -335,6 +367,94 @@ const saveSnippetName = async (snippet) => {
     error.value = 'Failed to save name: ' + (err.response?.data?.error || err.message);
   }
 };
+
+// Function definitions already exist, removing duplicate block that was accidentally added
+
+
+const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(new Blob([blob]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+};
+
+const exportStitchedAudio = async (snippet) => {
+  if (!exportingSnippets.value[snippet.id]) exportingSnippets.value[snippet.id] = {};
+  exportingSnippets.value[snippet.id].audio = true;
+  exportingSnippets.value[snippet.id].any = true;
+  
+  try {
+    const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
+      snippetId: snippet.id,
+      analysisId: snippet.analysisId,
+      reversedSpeed: 1, // Default to 1x for library export for now, or use selector if added
+      forwardSpeed: 1,
+      exportType: 'audio'
+    }, { responseType: 'blob' });
+    
+    downloadBlob(response.data, `${snippet.name || 'snippet'}_audio.wav`);
+  } catch (err) {
+    error.value = 'Failed to export audio: ' + (err.response?.data?.error || err.message);
+  } finally {
+    exportingSnippets.value[snippet.id].audio = false;
+    exportingSnippets.value[snippet.id].any = false;
+  }
+};
+
+const exportStitchedVideo = async (snippet) => {
+  if (!exportingSnippets.value[snippet.id]) exportingSnippets.value[snippet.id] = {};
+  exportingSnippets.value[snippet.id].video = true;
+  exportingSnippets.value[snippet.id].any = true;
+  
+  try {
+    const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
+      snippetId: snippet.id,
+      analysisId: snippet.analysisId,
+      reversedSpeed: 1,
+      forwardSpeed: 1,
+      exportType: 'video'
+    }, { responseType: 'blob' });
+    
+    downloadBlob(response.data, `${snippet.name || 'snippet'}_video.mp4`);
+  } catch (err) {
+    error.value = 'Failed to export video: ' + (err.response?.data?.error || err.message);
+  } finally {
+    exportingSnippets.value[snippet.id].video = false;
+    exportingSnippets.value[snippet.id].any = false;
+  }
+};
+
+const exportCompletePackage = async (snippet) => {
+  if (!exportingSnippets.value[snippet.id]) exportingSnippets.value[snippet.id] = {};
+  exportingSnippets.value[snippet.id].package = true;
+  exportingSnippets.value[snippet.id].any = true;
+
+  try {
+     const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
+      snippetId: snippet.id,
+      analysisId: snippet.analysisId,
+      reversedSpeed: 1,
+      forwardSpeed: 1,
+      exportType: 'complete_package'
+    }, { responseType: 'blob' });
+
+    const isVideo = snippet.type === 'video';
+    const ext = isVideo ? 'mp4' : 'wav';
+    downloadBlob(response.data, `${snippet.name || 'snippet'}_package.${ext}`);
+
+  } catch (err) {
+     error.value = 'Failed to export package: ' + (err.response?.data?.error || err.message);
+  } finally {
+     exportingSnippets.value[snippet.id].package = false;
+     exportingSnippets.value[snippet.id].any = false;
+  }
+};
+
+
 
 // Delete handlers
 const confirmDelete = (snippet) => {

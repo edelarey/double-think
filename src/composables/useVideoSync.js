@@ -13,45 +13,63 @@ export function useVideoSync(originalVideoRef, reversedVideoRef) {
   const duration = ref(0);
   const playbackSpeed = ref(1);
   const isLooping = ref(false);
-  const loopStart = ref(null);
-  const loopEnd = ref(null);
-  
-  let syncInterval = null;
+    const loopStart = ref(null);
+    const loopEnd = ref(null);
+    const activeLoopType = ref(null); // 'forward' or 'reverse'
+    
+    let syncInterval = null;
   let isSeeking = false;
   
   // Sync time from master (reversed video) to slave (original video)
   const syncTime = () => {
-    if (!reversedVideoRef.value) return;
     
-    // Always update current time from master
-    currentTime.value = reversedVideoRef.value.currentTime;
+    // Determine the authoritative source of time
+    // If synced, master (reversed) is authority.
+    // If not synced, whichever is playing is authority (preferring master if both playing? or separate?)
     
-    // Only sync to slave if enabled
-    if (isSynced.value && originalVideoRef.value && !isSeeking) {
-      // Allow a small drift (0.1s) before forcing seek to avoid stutter
-      if (Math.abs(originalVideoRef.value.currentTime - reversedVideoRef.value.currentTime) > 0.1) {
-        originalVideoRef.value.currentTime = reversedVideoRef.value.currentTime;
-      }
+    if (isSynced.value) {
+      if (!reversedVideoRef.value) return;
       
-      // Ensure playback state matches
-      if (!originalVideoRef.value.paused && reversedVideoRef.value.paused) {
-        originalVideoRef.value.pause();
-      } else if (originalVideoRef.value.paused && !reversedVideoRef.value.paused) {
-        originalVideoRef.value.play().catch(() => {});
+      // Master drives time
+      currentTime.value = reversedVideoRef.value.currentTime;
+      
+      if (originalVideoRef.value && !isSeeking) {
+         // Sync slave
+         if (Math.abs(originalVideoRef.value.currentTime - reversedVideoRef.value.currentTime) > 0.1) {
+            originalVideoRef.value.currentTime = reversedVideoRef.value.currentTime;
+         }
+         
+          // Ensure playback state matches
+          if (!originalVideoRef.value.paused && reversedVideoRef.value.paused) {
+            originalVideoRef.value.pause();
+          } else if (originalVideoRef.value.paused && !reversedVideoRef.value.paused) {
+            originalVideoRef.value.play().catch(() => {});
+          }
+      }
+    } else {
+      // Independent playback
+      // If we are playing specific regions, we might be playing only one video.
+      // Update currentTime based on what is active to ensure UI (timeline/waveform) updates
+      if (isOriginalPlaying.value && originalVideoRef.value) {
+         currentTime.value = originalVideoRef.value.currentTime;
+      } else if (reversedVideoRef.value) {
+         // Default to master if original not explicitly active or if master is playing
+         currentTime.value = reversedVideoRef.value.currentTime;
       }
     }
     
     // Handle looping (applies to whatever is playing)
     if (isLooping.value && loopStart.value !== null && loopEnd.value !== null) {
       if (currentTime.value >= loopEnd.value) {
-        // If synced, seek both, otherwise just seek the one playing (master usually)
         if (isSynced.value) {
-          seekTo(loopStart.value);
+           seekTo(loopStart.value);
         } else {
-           // If only master is playing
-           reversedVideoRef.value.currentTime = loopStart.value;
-           if (originalVideoRef.value && !originalVideoRef.value.paused) {
+           // Independent looping
+           if (isOriginalPlaying.value && originalVideoRef.value) {
              originalVideoRef.value.currentTime = loopStart.value;
+           }
+           if (reversedVideoRef.value && !reversedVideoRef.value.paused) {
+             reversedVideoRef.value.currentTime = loopStart.value;
            }
         }
       }
@@ -80,10 +98,6 @@ export function useVideoSync(originalVideoRef, reversedVideoRef) {
     
     if (isSynced.value && originalVideoRef.value) {
       promises.push(originalVideoRef.value.play());
-    } else if (originalVideoRef.value && !originalVideoRef.value.paused) {
-      // If unsynced but original is already playing, let it be?
-      // Or pause it to enforce "Reversed Only" for main control?
-      // User asked for "separate", so main control probably targets Reversed (Master).
     }
     
     Promise.all(promises)
@@ -93,6 +107,62 @@ export function useVideoSync(originalVideoRef, reversedVideoRef) {
       })
       .catch(err => {
         console.error('Error playing videos:', err);
+      });
+  };
+
+  // Play ONLY Original Video (Forward)
+  // Logic: Mute reversed, Unmute original. Play both if synced.
+  const playForwardOnly = (muteOthers = true) => {
+    if (!originalVideoRef.value) return;
+
+    // Handle muting logic
+    if (muteOthers) {
+      if (originalVideoRef.value) originalVideoRef.value.muted = false;
+      if (reversedVideoRef.value) reversedVideoRef.value.muted = true;
+    }
+    
+    const promises = [originalVideoRef.value.play()];
+    
+    if (isSynced.value && reversedVideoRef.value) {
+      promises.push(reversedVideoRef.value.play());
+    }
+
+    Promise.all(promises)
+      .then(() => {
+        isOriginalPlaying.value = true;
+        if (isSynced.value) isPlaying.value = true; // Both playing
+        startSync();
+      })
+      .catch(err => {
+        console.error('Error playing forward video:', err);
+      });
+  };
+
+  // Play ONLY Reversed Video
+  // Logic: Mute original, Unmute reversed. Play both if synced.
+  const playReverseOnly = (muteOthers = true) => {
+    if (!reversedVideoRef.value) return;
+
+    // Handle muting logic
+    if (muteOthers) {
+      if (reversedVideoRef.value) reversedVideoRef.value.muted = false;
+      if (originalVideoRef.value) originalVideoRef.value.muted = true;
+    }
+    
+    const promises = [reversedVideoRef.value.play()];
+    
+    if (isSynced.value && originalVideoRef.value) {
+      promises.push(originalVideoRef.value.play());
+    }
+
+    Promise.all(promises)
+      .then(() => {
+        isPlaying.value = true;
+        if (isSynced.value) isOriginalPlaying.value = true;
+        startSync();
+      })
+      .catch(err => {
+        console.error('Error playing reversed video:', err);
       });
   };
   
@@ -238,21 +308,24 @@ export function useVideoSync(originalVideoRef, reversedVideoRef) {
   });
   
   return {
-    isPlaying,
-    isOriginalPlaying,
-    isSynced,
-    currentTime,
-    duration,
-    playbackSpeed,
-    isLooping,
-    loopStart,
-    loopEnd,
-    play,
-    pause,
-    togglePlay,
+  isPlaying,
+  isOriginalPlaying,
+  isSynced,
+  currentTime,
+  duration,
+  playbackSpeed,
+  isLooping,
+  loopStart,
+  loopEnd,
+  activeLoopType,
+  play,
+  pause,
+  togglePlay,
     playOriginal,
     pauseOriginal,
     toggleOriginal,
+    playForwardOnly,
+    playReverseOnly,
     seekTo,
     skip,
     setSpeed,

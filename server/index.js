@@ -199,6 +199,7 @@ app.post('/api/analyze', upload.single('audio'), async (req, res) => {
     res.json({
       reversedAudioUrl: `/outputs/reversed/${outputFileName}`,
       originalAudioUrl: `/uploads/${originalFileName}`,
+      extractedAudioUrl: `/outputs/reversed/${outputFileName}`, // Fallback if needed, but we usually want the exact extracted audio
       analysisFile: `/outputs/reversed/${path.basename(analysisPath)}`,
       analysisId,
       mfccSummary: mfccFeatures.slice(0, 5),
@@ -720,6 +721,7 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
       reversedAudioPath: reversedAudioPath,
       originalVideoUrl: `/outputs/videos/${originalVideoFileName}`,
       reversedVideoUrl: `/outputs/videos/${reversedVideoFileName}`,
+      extractedAudioUrl: `/outputs/audio/${extractedAudioFileName}`,
       reversedAudioUrl: `/outputs/audio/${reversedAudioFileName}`,
       duration,
       maxChunkDuration,
@@ -740,10 +742,12 @@ app.post('/api/process-video', upload.single('video'), async (req, res) => {
       analysisId,
       originalVideoUrl: `/outputs/videos/${originalVideoFileName}`,
       reversedVideoUrl: `/outputs/videos/${reversedVideoFileName}`,
+      extractedAudioUrl: `/outputs/audio/${extractedAudioFileName}`,
       reversedAudioUrl: `/outputs/audio/${reversedAudioFileName}`,
       duration,
       fullOriginalVideoUrl: `http://localhost:${port}/outputs/videos/${originalVideoFileName}`,
       fullReversedVideoUrl: `http://localhost:${port}/outputs/videos/${reversedVideoFileName}`,
+      fullExtractedAudioUrl: `http://localhost:${port}/outputs/audio/${extractedAudioFileName}`,
       fullReversedAudioUrl: `http://localhost:${port}/outputs/audio/${reversedAudioFileName}`
     });
   } catch (error) {
@@ -979,7 +983,7 @@ app.delete('/api/markers/:markerId', async (req, res) => {
  */
 app.post('/api/extract-video-snippet', async (req, res) => {
   try {
-    const { analysisId, start, end, playbackSpeed, annotation, name, includeVideo } = req.body;
+    const { analysisId, start, end, playbackSpeed, annotation, name, includeVideo, forwardStart, forwardEnd } = req.body;
     
     if (!analysisId || start === undefined || end === undefined) {
       return res.status(400).json({ error: 'Missing required fields: analysisId, start, end' });
@@ -997,7 +1001,14 @@ app.post('/api/extract-video-snippet', async (req, res) => {
     const maxChunkDuration = analysisData.maxChunkDuration || 2.0;
     
     const timestamp = Date.now();
-    const duration = parseFloat(end) - parseFloat(start);
+    const startTimeResult = parseFloat(start);
+    const endTimeResult = parseFloat(end);
+    const duration = endTimeResult - startTimeResult;
+
+    // Handle distinct forward range
+    const fStart = forwardStart !== undefined ? parseFloat(forwardStart) : startTimeResult;
+    const fEnd = forwardEnd !== undefined ? parseFloat(forwardEnd) : endTimeResult;
+    const fDuration = fEnd - fStart;
     
     let snippet;
     
@@ -1009,9 +1020,10 @@ app.post('/api/extract-video-snippet', async (req, res) => {
       const forwardVideoSnippetPath = path.join(snippetsDir, forwardVideoSnippetFileName);
       
       // Extract reversed video snippet (original video + segment-reversed audio)
+      // Uses the 'start' and 'end' (Reverse region)
       await new Promise((resolve, reject) => {
         ffmpeg(analysisData.reversedVideoPath)
-          .setStartTime(parseFloat(start))
+          .setStartTime(startTimeResult)
           .setDuration(duration)
           .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
           .output(reversedVideoSnippetPath)
@@ -1021,10 +1033,11 @@ app.post('/api/extract-video-snippet', async (req, res) => {
       });
       
       // Extract forward video snippet (original video + original audio)
+      // Uses 'forwardStart' and 'forwardEnd' (Forward region)
       await new Promise((resolve, reject) => {
         ffmpeg(analysisData.originalVideoPath)
-          .setStartTime(parseFloat(start))
-          .setDuration(duration)
+          .setStartTime(fStart)
+          .setDuration(fDuration)
           .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
           .output(forwardVideoSnippetPath)
           .on('end', resolve)
@@ -1040,9 +1053,12 @@ app.post('/api/extract-video-snippet', async (req, res) => {
         forwardFile: forwardVideoSnippetFileName,
         url: `/outputs/snippets/${reversedVideoSnippetFileName}`,
         forwardUrl: `/outputs/snippets/${forwardVideoSnippetFileName}`,
-        start: parseFloat(start),
-        end: parseFloat(end),
-        duration,
+        start: startTimeResult,
+        end: endTimeResult,
+        forwardStart: fStart,
+        forwardEnd: fEnd,
+        duration, // Duration of the reversed part primarily
+        forwardDuration: fDuration,
         playbackSpeed: parseFloat(playbackSpeed) || 1,
         annotation: annotation || '',
         maxChunkDuration,
@@ -1058,7 +1074,7 @@ app.post('/api/extract-video-snippet', async (req, res) => {
       // Extract reversed audio snippet
       await new Promise((resolve, reject) => {
         ffmpeg(analysisData.reversedAudioPath)
-          .setStartTime(parseFloat(start))
+          .setStartTime(startTimeResult)
           .setDuration(duration)
           .audioCodec('pcm_s16le')
           .format('wav')
@@ -1069,10 +1085,11 @@ app.post('/api/extract-video-snippet', async (req, res) => {
       });
       
       // Extract forward (original) audio snippet
+      // Uses 'forwardStart' and 'forwardEnd' (Forward region)
       await new Promise((resolve, reject) => {
         ffmpeg(analysisData.extractedAudioPath)
-          .setStartTime(parseFloat(start))
-          .setDuration(duration)
+          .setStartTime(fStart)
+          .setDuration(fDuration)
           .audioCodec('pcm_s16le')
           .format('wav')
           .output(forwardSnippetPath)
@@ -1089,9 +1106,12 @@ app.post('/api/extract-video-snippet', async (req, res) => {
         forwardFile: forwardSnippetFileName,
         url: `/outputs/snippets/${snippetFileName}`,
         forwardUrl: `/outputs/snippets/${forwardSnippetFileName}`,
-        start: parseFloat(start),
-        end: parseFloat(end),
+        start: startTimeResult,
+        end: endTimeResult,
+        forwardStart: fStart,
+        forwardEnd: fEnd,
         duration,
+        forwardDuration: fDuration,
         playbackSpeed: parseFloat(playbackSpeed) || 1,
         annotation: annotation || '',
         maxChunkDuration,
@@ -1305,7 +1325,183 @@ app.post('/api/stitch-snippet', async (req, res) => {
       return filters.join(',');
     };
     
-    if (exportType === 'video') {
+    if (exportType === 'complete_package') {
+      // Complete Package: Forward (1x) -> Reversed(1.0x) -> Reversed(0.75x) -> Reversed(0.5x)
+      
+      const outputFilename = isVideoSnippet ? `complete_package_video_${timestamp}.mp4` : `complete_package_audio_${timestamp}.wav`;
+      const outputPath = path.join(snippetsDir, outputFilename);
+
+      if (isVideoSnippet) {
+        // Video Implementation
+        const tempForwardVideo = path.join(snippetsDir, `temp_pkg_fwd_vid_${timestamp}.mp4`);
+        const tempRevVideo1x = path.join(snippetsDir, `temp_pkg_rev_vid1x_${timestamp}.mp4`);
+        const tempRevVideo75x = path.join(snippetsDir, `temp_pkg_rev_vid75x_${timestamp}.mp4`);
+        const tempRevVideo50x = path.join(snippetsDir, `temp_pkg_rev_vid50x_${timestamp}.mp4`);
+
+        // 1. Forward Video @ fwdSpeed
+        await new Promise((resolve, reject) => {
+          ffmpeg(forwardFilePath)
+            .videoFilters(`setpts=${1/fwdSpeed}*PTS`)
+            .audioFilters(getAtempoFilters(fwdSpeed))
+            .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+            .output(tempForwardVideo)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // 2. Reversed Video @ 1.0x (using revSpeed from user, usually 1x, enabling slow motion if selected)
+        const speed1x = revSpeed;
+        await new Promise((resolve, reject) => {
+          ffmpeg(reversedFilePath)
+            .videoFilters(`setpts=${1/speed1x}*PTS`)
+            .audioFilters(getAtempoFilters(speed1x))
+            .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+            .output(tempRevVideo1x)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // 3. Reversed Video @ 0.75x
+        const speed75 = 0.75;
+        await new Promise((resolve, reject) => {
+          ffmpeg(reversedFilePath)
+            .videoFilters(`setpts=${1/speed75}*PTS`)
+            .audioFilters(getAtempoFilters(speed75))
+            .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+            .output(tempRevVideo75x)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // 4. Reversed Video @ 0.5x
+         const speed50 = 0.5;
+         await new Promise((resolve, reject) => {
+          ffmpeg(reversedFilePath)
+            .videoFilters(`setpts=${1/speed50}*PTS`)
+            .audioFilters(getAtempoFilters(speed50))
+            .outputOptions(['-c:v libx264', '-c:a aac', '-preset fast'])
+            .output(tempRevVideo50x)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // 5. Concatenate all 4 parts
+        const concatFile = path.join(snippetsDir, `concat_pkg_${timestamp}.txt`);
+        const fileContent = `file '${tempForwardVideo}'\nfile '${tempRevVideo1x}'\nfile '${tempRevVideo75x}'\nfile '${tempRevVideo50x}'`;
+        await fs.writeFile(concatFile, fileContent);
+
+        await new Promise((resolve, reject) => {
+          ffmpeg()
+            .input(concatFile)
+            .inputOptions(['-f', 'concat', '-safe', '0'])
+            .outputOptions(['-c', 'copy'])
+            .output(outputPath)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // Cleanup
+        await fs.unlink(tempForwardVideo).catch(()=>{});
+        await fs.unlink(tempRevVideo1x).catch(()=>{});
+        await fs.unlink(tempRevVideo75x).catch(()=>{});
+        await fs.unlink(tempRevVideo50x).catch(()=>{});
+        await fs.unlink(concatFile).catch(()=>{});
+
+      } else {
+        // Audio Implementation
+        const tempForwardAudio = path.join(snippetsDir, `temp_pkg_fwd_aud_${timestamp}.wav`);
+        const tempRevAudio1x = path.join(snippetsDir, `temp_pkg_rev_aud1x_${timestamp}.wav`);
+        const tempRevAudio75x = path.join(snippetsDir, `temp_pkg_rev_aud75x_${timestamp}.wav`);
+        const tempRevAudio50x = path.join(snippetsDir, `temp_pkg_rev_aud50x_${timestamp}.wav`);
+
+        // 1. Forward Audio @ fwdSpeed
+        await new Promise((resolve, reject) => {
+          ffmpeg(forwardFilePath)
+            .audioFilters(getAtempoFilters(fwdSpeed))
+            .audioCodec('pcm_s16le')
+            .format('wav')
+            .output(tempForwardAudio)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+         // 2. Reversed Audio @ 1.0x (using user speed)
+        const speed1x = revSpeed;
+        await new Promise((resolve, reject) => {
+          ffmpeg(reversedFilePath)
+            .audioFilters(getAtempoFilters(speed1x))
+            .audioCodec('pcm_s16le')
+            .format('wav')
+            .output(tempRevAudio1x)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+         // 3. Reversed Audio @ 0.75x
+        const speed75 = 0.75;
+        await new Promise((resolve, reject) => {
+          ffmpeg(reversedFilePath)
+            .audioFilters(getAtempoFilters(speed75))
+            .audioCodec('pcm_s16le')
+            .format('wav')
+            .output(tempRevAudio75x)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // 4. Reversed Audio @ 0.5x
+         const speed50 = 0.5;
+        await new Promise((resolve, reject) => {
+          ffmpeg(reversedFilePath)
+            .audioFilters(getAtempoFilters(speed50))
+            .audioCodec('pcm_s16le')
+            .format('wav')
+            .output(tempRevAudio50x)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // 5. Concatenate
+        // Use filter complex for audio concat
+        await new Promise((resolve, reject) => {
+          ffmpeg()
+            .input(tempForwardAudio)
+            .input(tempRevAudio1x)
+            .input(tempRevAudio75x)
+            .input(tempRevAudio50x)
+            .complexFilter(['[0:a][1:a][2:a][3:a]concat=n=4:v=0:a=1[out]'])
+            .outputOptions(['-map', '[out]'])
+            .audioCodec('pcm_s16le')
+            .format('wav')
+            .output(outputPath)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+
+        // Cleanup
+        await fs.unlink(tempForwardAudio).catch(() => {});
+        await fs.unlink(tempRevAudio1x).catch(() => {});
+        await fs.unlink(tempRevAudio75x).catch(() => {});
+        await fs.unlink(tempRevAudio50x).catch(() => {});
+      }
+
+      // Send file
+      res.download(outputPath, outputFilename, async (err) => {
+        if (err) console.error('Error sending complete package:', err);
+        await fs.unlink(outputPath).catch(() => {});
+      });
+
+    } else if (exportType === 'video') {
       // Video export: Forward video (played twice at different speeds) + stitched audio overlay
       // Requires video snippets
       if (!isVideoSnippet) {

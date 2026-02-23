@@ -135,12 +135,12 @@
           </div>
         </div>
         
-        <!-- Playback Controls -->
-        <div class="controls-bar mb-3 p-3 bg-light rounded">
+        <!-- Sync & Global Status Bar -->
+        <div class="controls-bar mb-3 p-3 bg-light rounded border">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <!-- Transport Controls -->
+            <!-- Sync Toggle -->
             <div class="d-flex align-items-center gap-2">
-              <button
+               <button
                 class="btn btn-sm"
                 :class="isSynced ? 'btn-info' : 'btn-outline-secondary'"
                 @click="isSynced = !isSynced"
@@ -150,84 +150,151 @@
               </button>
               
               <div class="vr mx-2"></div>
+              
+              <!-- Time Display -->
+              <div class="time-display">
+                <span class="font-monospace">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
+              </div>
+            </div>
 
-              <button class="btn btn-secondary btn-sm" @click="skip(-10)" title="Skip back 10s">
-                ⏪ -10s
-              </button>
-              <button class="btn btn-primary" @click="togglePlay">
-                {{ isPlaying ? '⏸ Pause' : '▶ Play' }}
-              </button>
-              <button class="btn btn-secondary btn-sm" @click="skip(10)" title="Skip forward 10s">
-                +10s ⏩
-              </button>
-            </div>
-            
-            <!-- Time Display -->
-            <div class="time-display">
-              <span class="font-monospace">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
-            </div>
-            
-            <!-- Speed Control -->
-            <div class="d-flex align-items-center gap-2">
-              <label class="form-label mb-0 small">Speed:</label>
-              <select v-model.number="playbackSpeed" class="form-select form-select-sm speed-select" @change="setSpeed(playbackSpeed)">
-                <option :value="0.25">0.25x</option>
-                <option :value="0.5">0.5x</option>
-                <option :value="0.75">0.75x</option>
-                <option :value="1">1x</option>
-                <option :value="1.5">1.5x</option>
-                <option :value="2">2x</option>
-              </select>
-            </div>
-            
-            <!-- Volume Control -->
-            <div class="d-flex align-items-center gap-2">
-              <label class="form-label mb-0 small">Volume:</label>
-              <input 
-                type="range" 
-                v-model.number="volume" 
-                min="0" 
-                max="200" 
-                class="form-range volume-slider"
-                @input="volumeBoost.setVolume(volume)"
-              />
-              <span class="small">{{ volume }}%</span>
-            </div>
-            
-            <!-- Loop Toggle -->
-            <div class="d-flex align-items-center gap-2">
-              <button 
-                class="btn btn-sm"
-                :class="isLooping ? 'btn-success' : 'btn-outline-secondary'"
-                @click="toggleLoop"
-                :disabled="!selectedRegion"
-              >
-                🔁 Loop {{ isLooping ? 'ON' : 'OFF' }}
-              </button>
+            <!-- Global Settings -->
+            <div class="d-flex align-items-center gap-3">
+               <!-- Speed Control -->
+              <div class="d-flex align-items-center gap-2">
+                <label class="form-label mb-0 small">Speed:</label>
+                <select v-model.number="playbackSpeed" class="form-select form-select-sm speed-select" @change="setSpeed(playbackSpeed)">
+                  <option :value="0.25">0.25x</option>
+                  <option :value="0.5">0.5x</option>
+                  <option :value="0.75">0.75x</option>
+                  <option :value="1">1x</option>
+                  <option :value="1.5">1.5x</option>
+                  <option :value="2">2x</option>
+                </select>
+              </div>
+              
+               <!-- Volume Control -->
+              <div class="d-flex align-items-center gap-2">
+                <label class="form-label mb-0 small">Rev Vol:</label>
+                <input
+                  type="range"
+                  v-model.number="volume"
+                  min="0"
+                  max="200"
+                  class="form-range volume-slider"
+                  @input="volumeBoost.setVolume(volume)"
+                />
+                <span class="small">{{ volume }}%</span>
+              </div>
             </div>
           </div>
         </div>
         
-        <!-- Waveform Timeline -->
+        <!-- Waveform Timelines with Dedicated Controls -->
         <div class="mb-3">
-          <h5>Analysis Waveform</h5>
-          <p class="text-muted small">Click and drag to select a region for looping or saving as snippet</p>
-          <div ref="waveformContainer" class="waveform-container border rounded"></div>
+          <!-- FORWARD Waveform & Controls -->
+          <div class="mb-4 border rounded p-3 bg-white shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+               <h5 class="text-success mb-0">FORWARD Audio</h5>
+               <span class="badge bg-light text-dark border">Original</span>
+            </div>
+            
+            <div ref="forwardWaveformContainer" class="waveform-container border rounded mb-3"></div>
+            
+            <!-- Forward Controls -->
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+               <div class="btn-group">
+                  <button class="btn btn-outline-success btn-sm" @click="handlePlayForward(false)">
+                     {{ isOriginalPlaying && !originalVideoEl?.muted ? '⏸ Pause' : '▶ Play (Mute Rev)' }}
+                  </button>
+                  <button class="btn btn-outline-secondary btn-sm" @click="skip(-5)">⏪ 5s</button>
+                  <button class="btn btn-outline-secondary btn-sm" @click="skip(5)">5s ⏩</button>
+               </div>
+
+               <div v-if="forwardRegion" class="d-flex align-items-center gap-2 p-1 border rounded bg-light">
+                  <span class="small text-success fw-bold ps-2">Selection:</span>
+                  <button class="btn btn-sm btn-success" @click="playForwardRegion">
+                    ▶ Play Region
+                  </button>
+                  <button
+                    class="btn btn-sm"
+                    :class="isLooping && activeLoopType === 'forward' ? 'btn-success active' : 'btn-outline-secondary'"
+                    @click="toggleForwardLoop"
+                  >
+                    🔁 Loop
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" @click="clearForwardRegion">
+                    ✕ Clear
+                  </button>
+                  <span class="small text-muted pe-2 border-start ps-2">
+                     {{ formatTime(forwardRegion.start) }} - {{ formatTime(forwardRegion.end) }}
+                  </span>
+               </div>
+               <div v-else class="text-muted small fst-italic">
+                  Drag on waveform to select region
+               </div>
+            </div>
+          </div>
+
+          <!-- REVERSE Waveform & Controls -->
+          <div class="mb-4 border rounded p-3 bg-white shadow-sm">
+             <div class="d-flex justify-content-between align-items-center mb-2">
+               <h5 class="text-danger mb-0">REVERSED Audio</h5>
+               <span class="badge bg-light text-dark border">Analysis</span>
+            </div>
+            
+            <div ref="waveformContainer" class="waveform-container border rounded mb-3"></div>
+            
+            <!-- Reverse Controls -->
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+               <div class="btn-group">
+                  <button class="btn btn-outline-danger btn-sm" @click="handlePlayReverse(false)">
+                     {{ isPlaying && !reversedVideoEl?.muted ? '⏸ Pause' : '▶ Play (Mute Fwd)' }}
+                  </button>
+                  <button class="btn btn-outline-secondary btn-sm" @click="skip(-5)">⏪ 5s</button>
+                  <button class="btn btn-outline-secondary btn-sm" @click="skip(5)">5s ⏩</button>
+               </div>
+
+               <div v-if="reverseRegion" class="d-flex align-items-center gap-2 p-1 border rounded bg-light">
+                  <span class="small text-danger fw-bold ps-2">Selection:</span>
+                  <button class="btn btn-sm btn-danger" @click="playReverseRegion">
+                    ▶ Play Region
+                  </button>
+                  <button
+                    class="btn btn-sm"
+                    :class="isLooping && activeLoopType === 'reverse' ? 'btn-success active' : 'btn-outline-secondary'"
+                    @click="toggleReverseLoop"
+                  >
+                    🔁 Loop
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" @click="clearReverseRegion">
+                    ✕ Clear
+                  </button>
+                  <span class="small text-muted pe-2 border-start ps-2">
+                     {{ formatTime(reverseRegion.start) }} - {{ formatTime(reverseRegion.end) }}
+                  </span>
+               </div>
+               <div v-else class="text-muted small fst-italic">
+                  Drag on waveform to select region
+               </div>
+            </div>
+          </div>
           
-          <!-- Region Controls -->
-          <div v-if="selectedRegion" class="mt-2 d-flex align-items-center gap-2 flex-wrap">
-            <span class="badge bg-primary">
-              Selected: {{ formatTime(selectedRegion.start) }} - {{ formatTime(selectedRegion.end) }}
-            </span>
-            <button class="btn btn-sm btn-outline-primary" @click="playSelectedRegion">
-              ▶ Play Selected
-            </button>
-            <button class="btn btn-sm btn-success" @click="showSaveSnippetModal = true">
-              💾 Save Snippet
-            </button>
-            <button class="btn btn-sm btn-outline-danger" @click="clearSelectedRegion">
-              ✕ Clear Selection
-            </button>
+           <!-- Save Snippet Area -->
+          <div v-if="forwardRegion || reverseRegion" class="mt-3 p-3 bg-light rounded d-flex justify-content-between align-items-center border border-success">
+             <div>
+                <strong>Actions:</strong>
+                <span v-if="forwardRegion && reverseRegion" class="text-success ms-2">Ready to save Pair</span>
+                <span v-else-if="forwardRegion" class="text-success ms-2">Forward Selection Active</span>
+                <span v-else-if="reverseRegion" class="text-danger ms-2">Reverse Selection Active</span>
+             </div>
+             <div class="d-flex gap-2">
+                <button class="btn btn-success fw-bold" @click="showSaveSnippetModal = true">
+                  💾 Save Snippet
+                </button>
+                <button class="btn btn-outline-secondary" @click="clearAllRegions">
+                  ✕ Clear All Selections
+                </button>
+             </div>
           </div>
         </div>
         
@@ -391,6 +458,16 @@
                     </div>
                   </template>
                   
+                  <!-- Ranges in List -->
+                  <div class="mb-2 small">
+                      <div class="d-flex justify-content-between text-danger">
+                        <span><strong>Reverse:</strong> {{ formatTime(snippet.start) }} - {{ formatTime(snippet.end) }}</span>
+                      </div>
+                      <div class="d-flex justify-content-between text-success">
+                        <span><strong>Forward:</strong> {{ formatTime(snippet.forwardStart || snippet.start) }} - {{ formatTime(snippet.forwardEnd || snippet.end) }}</span>
+                      </div>
+                  </div>
+
                   <!-- Annotation -->
                   <div class="mb-2">
                     <div v-if="!snippet._editing" class="annotation-box p-2 bg-light rounded">
@@ -413,23 +490,26 @@
                     >
                       ✏️ Edit
                     </button>
-                    <button
-                      class="btn btn-sm btn-success"
-                      @click="exportStitchedAudio(snippet)"
-                      :disabled="exportingSnippets[snippet.id]?.audio"
-                    >
-                      <span v-if="exportingSnippets[snippet.id]?.audio" class="spinner-border spinner-border-sm me-1"></span>
-                      🎵 Export Audio
-                    </button>
-                    <button
-                      v-if="snippet.type === 'video'"
-                      class="btn btn-sm btn-primary"
-                      @click="exportStitchedVideo(snippet)"
-                      :disabled="exportingSnippets[snippet.id]?.video"
-                    >
-                      <span v-if="exportingSnippets[snippet.id]?.video" class="spinner-border spinner-border-sm me-1"></span>
-                      🎬 Export Video
-                    </button>
+                    
+                    <div class="dropdown">
+                      <button class="btn btn-sm btn-success dropdown-toggle" type="button" :id="'exportDropdown' + snippet.id" data-bs-toggle="dropdown" aria-expanded="false" :disabled="exportingSnippets[snippet.id]?.any">
+                         <span v-if="exportingSnippets[snippet.id]?.any" class="spinner-border spinner-border-sm me-1"></span>
+                         📤 Export
+                      </button>
+                      <ul class="dropdown-menu" :aria-labelledby="'exportDropdown' + snippet.id">
+                         <li>
+                            <button class="dropdown-item" @click="exportStitchedAudio(snippet)">🎵 Stitched Audio</button>
+                         </li>
+                         <li v-if="snippet.type === 'video'">
+                            <button class="dropdown-item" @click="exportStitchedVideo(snippet)">🎬 Stitched Video</button>
+                         </li>
+                         <li><hr class="dropdown-divider"></li>
+                         <li>
+                            <button class="dropdown-item fw-bold" @click="exportCompletePackage(snippet)">📦 Complete Package</button>
+                         </li>
+                      </ul>
+                    </div>
+              
                     <a :href="snippet.url" download class="btn btn-sm btn-outline-primary">⬇ Reversed</a>
                     <a :href="snippet.forwardUrl" download class="btn btn-sm btn-outline-primary">⬇ Forward</a>
                     <button class="btn btn-sm btn-outline-danger" @click="deleteSnippet(snippet.id)">🗑️ Delete</button>
@@ -442,13 +522,26 @@
       </div>
       
       <!-- Save Snippet Modal -->
-      <div v-if="showSaveSnippetModal" class="modal-overlay" @click.self="showSaveSnippetModal = false">
-        <div class="modal-content">
-          <h5>Save Snippet</h5>
-          <p>Save selection: {{ formatTime(selectedRegion?.start || 0) }} - {{ formatTime(selectedRegion?.end || 0) }}</p>
-          
-          <div class="mb-3">
-            <label class="form-label">Name <span class="text-danger">*</span></label>
+    <div v-if="showSaveSnippetModal" class="modal-overlay" @click.self="showSaveSnippetModal = false">
+      <div class="modal-content">
+        <h5>Save Snippet</h5>
+        
+        <div class="alert alert-info mb-3">
+          <div class="d-flex justify-content-between mb-1">
+             <strong class="text-danger">Reverse Range:</strong>
+             <span>{{ formatTime(reverseRegion?.start || 0) }} - {{ formatTime(reverseRegion?.end || 0) }}</span>
+          </div>
+          <div class="d-flex justify-content-between">
+             <strong class="text-success">Forward Range:</strong>
+             <span>{{ formatTime(forwardRegion?.start || (reverseRegion?.start || 0)) }} - {{ formatTime(forwardRegion?.end || (reverseRegion?.end || 0)) }}</span>
+          </div>
+          <div v-if="!forwardRegion" class="mt-2 small fst-italic">
+            * Using reverse range for forward clip since no independent forward selection was made.
+          </div>
+        </div>
+        
+        <div class="mb-3">
+          <label class="form-label">Name <span class="text-danger">*</span></label>
             <input v-model="snippetName" class="form-control" placeholder="Give this snippet a name..." autofocus />
           </div>
           
@@ -520,6 +613,7 @@ const route = useRoute();
 const originalVideoEl = ref(null);
 const reversedVideoEl = ref(null);
 const waveformContainer = ref(null);
+const forwardWaveformContainer = ref(null);
 
 // State
 const selectedFile = ref(null);
@@ -540,9 +634,16 @@ const existingVideos = ref([]);
 const selectedExistingId = ref('');
 
 // Waveform and regions
-let waveSurfer = null;
-let regionsPlugin = null;
-const selectedRegion = ref(null);
+let waveSurfer = null; // Reverse
+let regionsPlugin = null; // Reverse
+let forwardWaveSurfer = null; // Forward
+let forwardRegionsPlugin = null; // Forward
+
+const reverseRegion = ref(null); // { start, end }
+const forwardRegion = ref(null); // { start, end }
+// Deprecate selectedRegion efficiently by using a computed that reflects reverseRegion for backward compat if needed,
+// but we will mainly switch to separate refs.
+const selectedRegion = computed(() => reverseRegion.value);
 
 // Snippets
 const snippets = ref([]);
@@ -570,6 +671,7 @@ const {
   duration,
   playbackSpeed,
   isLooping,
+  activeLoopType, // Exposed from composition
   play,
   pause,
   togglePlay,
@@ -581,7 +683,9 @@ const {
   setSpeed,
   setLoop,
   clearLoop,
-  toggleLoop
+  toggleLoop,
+  playForwardOnly,
+  playReverseOnly
 } = useVideoSync(originalVideoEl, reversedVideoEl);
 
 // Volume boost (for reversed video)
@@ -680,11 +784,16 @@ const resetAnalysis = () => {
   selectedExistingId.value = '';
   markers.value = [];
   snippets.value = [];
-  selectedRegion.value = null;
+  reverseRegion.value = null;
+  forwardRegion.value = null;
   
   if (waveSurfer) {
     waveSurfer.destroy();
     waveSurfer = null;
+  }
+  if (forwardWaveSurfer) {
+    forwardWaveSurfer.destroy();
+    forwardWaveSurfer = null;
   }
   
   fetchExistingVideos();
@@ -696,9 +805,16 @@ const onVideoLoaded = () => {
 };
 
 const initializeWaveform = () => {
+  // REVERSED AUDIO WAVEFORM
   // Use absolute URL to ensure WaveSurfer can fetch correctly avoiding proxy issues
   const audioUrl = analysisData.value?.fullReversedAudioUrl ||
                    (analysisData.value?.reversedAudioUrl ? `${API_BASE}${analysisData.value.reversedAudioUrl}` : null);
+
+  // FORWARD AUDIO WAVEFORM
+  // We prefer the extracted audio (WAV) if available, otherwise fallback to video url or original audio url
+  const forwardAudioUrl = analysisData.value?.fullExtractedAudioUrl ||
+                          (analysisData.value?.extractedAudioUrl ? `${API_BASE}${analysisData.value.extractedAudioUrl}` : null) ||
+                          (analysisData.value?.originalVideoUrl ? `${API_BASE}${analysisData.value.originalVideoUrl}` : null);
 
   if (!audioUrl) {
     console.warn('Cannot initialize waveform: Missing URL', { url: audioUrl });
@@ -719,13 +835,20 @@ const initializeWaveform = () => {
     waveSurfer = null;
   }
   
+  if (forwardWaveSurfer) {
+    forwardWaveSurfer.destroy();
+    forwardWaveSurfer = null;
+  }
+
   regionsPlugin = RegionsPlugin.create();
+  forwardRegionsPlugin = RegionsPlugin.create();
   
+  // --- REVERSED WAVEFORM ---
   try {
     waveSurfer = WaveSurfer.create({
       container: waveformContainer.value,
-      waveColor: 'rgb(200, 0, 200)',
-      progressColor: 'rgb(100, 0, 100)',
+      waveColor: 'rgb(255, 99, 132)', // Red-ish for reverse
+      progressColor: 'rgb(200, 50, 100)',
       height: 100,
       plugins: [regionsPlugin],
       responsive: true,
@@ -738,80 +861,158 @@ const initializeWaveform = () => {
     
     waveSurfer.on('error', (err) => {
       console.error('WaveSurfer error:', err);
-      // Don't show UI error immediately for waveform glitches unless critical
     });
 
     waveSurfer.on('ready', () => {
-    // Add visual markers to waveform
-    markers.value.forEach(marker => {
-      addMarkerToWaveform(marker);
+      markers.value.forEach(marker => {
+        addMarkerToWaveform(marker);
+      });
     });
-  });
-  
+    
+    waveSurfer.on('click', (relativeX) => {
+      const time = relativeX * waveSurfer.getDuration();
+      // Click on reverse waveform mainly targets reverse video
+      if (reversedVideoEl.value) {
+        reversedVideoEl.value.currentTime = time;
+      }
+      // If synced, update original too
+      if (isSynced.value && originalVideoEl.value) {
+        originalVideoEl.value.currentTime = time;
+      }
+      currentTime.value = time;
+    });
+
   } catch (err) {
       console.error('WaveSurfer creation error', err);
   }
 
-  waveSurfer.on('click', (relativeX) => {
-    const time = relativeX * waveSurfer.getDuration();
-    seekTo(time);
-  });
+  // --- FORWARD WAVEFORM ---
+  if (forwardWaveformContainer.value && forwardAudioUrl) {
+      try {
+        forwardWaveSurfer = WaveSurfer.create({
+          container: forwardWaveformContainer.value,
+          waveColor: 'rgb(75, 192, 192)', // Green-ish for forward
+          progressColor: 'rgb(50, 150, 150)',
+          height: 100,
+          plugins: [forwardRegionsPlugin],
+          responsive: true,
+          normalize: true,
+          minPxPerSec: 20,
+          cursorColor: '#333',
+          barWidth: 2,
+          url: forwardAudioUrl
+        });
 
-  // Enable native drag selection
+        forwardWaveSurfer.on('error', (err) => {
+          console.error('Forward WaveSurfer error:', err);
+        });
+
+        forwardWaveSurfer.on('click', (relativeX) => {
+          const time = relativeX * forwardWaveSurfer.getDuration();
+          // Click on forward waveform should target forward video
+          if (originalVideoEl.value) {
+            originalVideoEl.value.currentTime = time;
+          }
+          // If synced, update reverse too
+          if (isSynced.value && reversedVideoEl.value) {
+            reversedVideoEl.value.currentTime = time;
+          }
+          currentTime.value = time;
+        });
+        
+      } catch (err) {
+        console.error('Forward WaveSurfer creation error', err);
+      }
+  }
+
+  // --- REGION EVENTS (REVERSED) ---
   regionsPlugin.enableDragSelection({
-    color: 'rgba(0, 123, 255, 0.2)',
+    color: 'rgba(255, 99, 132, 0.2)', // Red tint
   });
 
-  // Handle region creation (selection)
+  const handleReverseRegionUpdate = (region) => {
+        if (!region.id.toString().startsWith('marker_')) {
+          reverseRegion.value = { start: region.start, end: region.end };
+        }
+    };
+
   regionsPlugin.on('region-created', (region) => {
-    // Remove previous selection regions (keep markers)
+    // Ensure only one active selection region exists per waveform
     regionsPlugin.getRegions().forEach(r => {
-      // If it exists, is not the new one, and is not a marker -> remove it
       if (r.id !== region.id && !r.id.toString().startsWith('marker_')) {
         r.remove();
       }
     });
-    
-    // Update state
-    selectedRegion.value = { start: region.start, end: region.end };
-    setLoop(region.start, region.end);
+    handleReverseRegionUpdate(region);
   });
 
-  // Handle region updates (resize/drag)
-  regionsPlugin.on('region-updated', (region) => {
-    if (!region.id.toString().startsWith('marker_')) {
-      selectedRegion.value = { start: region.start, end: region.end };
-      setLoop(region.start, region.end);
-    }
-  });
-  
-  // Handle clicking a region (activate selection)
+  regionsPlugin.on('region-updated', handleReverseRegionUpdate);
   regionsPlugin.on('region-clicked', (region, e) => {
     e.stopPropagation();
-    if (!region.id.toString().startsWith('marker_')) {
-      selectedRegion.value = { start: region.start, end: region.end };
-      setLoop(region.start, region.end);
-    }
+    handleReverseRegionUpdate(region);
+  });
+
+  // --- REGION EVENTS (FORWARD) ---
+  forwardRegionsPlugin.enableDragSelection({
+     color: 'rgba(75, 192, 192, 0.2)', // Green tint
+  });
+
+  const handleForwardRegionUpdate = (region) => {
+    forwardRegion.value = { start: region.start, end: region.end };
+  };
+
+  forwardRegionsPlugin.on('region-created', (region) => {
+    forwardRegionsPlugin.getRegions().forEach(r => {
+      if (r.id !== region.id) {
+        r.remove();
+      }
+    });
+    handleForwardRegionUpdate(region);
+  });
+
+  forwardRegionsPlugin.on('region-updated', handleForwardRegionUpdate);
+  forwardRegionsPlugin.on('region-clicked', (region, e) => {
+    e.stopPropagation();
+    handleForwardRegionUpdate(region);
   });
 };
 
 const addMarkerToWaveform = (marker) => {
-  if (!regionsPlugin) return;
-  regionsPlugin.addRegion({
-    start: marker.timestamp,
-    end: marker.timestamp + 0.1,
-    color: marker.color || '#ff6384',
-    drag: false,
-    resize: false,
-    id: marker.id
-  });
+  // Add to reverse waveform
+  if (regionsPlugin) {
+      regionsPlugin.addRegion({
+        start: marker.timestamp,
+        end: marker.timestamp + 0.1,
+        color: marker.color || '#ff6384',
+        drag: false,
+        resize: false,
+        id: marker.id
+      });
+  }
+  // Add to forward waveform
+  if (forwardRegionsPlugin) {
+    forwardRegionsPlugin.addRegion({
+        start: marker.timestamp,
+        end: marker.timestamp + 0.1,
+        color: marker.color || '#ff6384',
+        drag: false,
+        resize: false,
+        id: marker.id
+    });
+  }
 };
 
-const clearSelectedRegion = () => {
-  selectedRegion.value = null;
+const clearAllRegions = () => {
+  clearReverseRegion();
+  clearForwardRegion();
   clearLoop();
-  
-  if (regionsPlugin) {
+};
+
+const clearReverseRegion = () => {
+   reverseRegion.value = null;
+   if (activeLoopType.value === 'reverse') clearLoop();
+   
+   if (regionsPlugin) {
     Object.values(regionsPlugin.regions || {}).forEach(r => {
       if (!r.id?.startsWith('marker_')) {
         r.remove();
@@ -820,10 +1021,92 @@ const clearSelectedRegion = () => {
   }
 };
 
-const playSelectedRegion = () => {
-  if (!selectedRegion.value) return;
-  seekTo(selectedRegion.value.start);
-  play();
+const clearForwardRegion = () => {
+   forwardRegion.value = null;
+   if (activeLoopType.value === 'forward') clearLoop();
+
+   if (forwardRegionsPlugin) {
+     forwardRegionsPlugin.clearRegions();
+   }
+};
+
+const handlePlayForward = (isLoopingRequest = false) => {
+   // Logic: Unmute Forward, Mute Reverse
+   // If playing, pause. If paused, play.
+   if (isOriginalPlaying.value && !originalVideoEl.value?.paused && !originalVideoEl.value?.muted && !isLoopingRequest) {
+      pauseOriginal();
+      if (isSynced.value) pause();
+   } else {
+      playForwardOnly(true); // muteOthers = true
+   }
+};
+
+const handlePlayReverse = (isLoopingRequest = false) => {
+   // Logic: Mute Forward, Unmute Reverse
+   if (isPlaying.value && !reversedVideoEl.value?.paused && !reversedVideoEl.value?.muted && !isLoopingRequest) {
+      pause();
+      if (isSynced.value) pauseOriginal();
+   } else {
+      playReverseOnly(true); // muteOthers = true
+   }
+};
+
+
+const toggleForwardLoop = () => {
+   if (!forwardRegion.value) return;
+   
+   if (isLooping.value && activeLoopType.value === 'forward') {
+      isLooping.value = false;
+      activeLoopType.value = null;
+      clearLoop();
+   } else {
+      setLoop(forwardRegion.value.start, forwardRegion.value.end);
+      isLooping.value = true;
+      activeLoopType.value = 'forward';
+      handlePlayForward(true);
+   }
+};
+
+const toggleReverseLoop = () => {
+   if (!reverseRegion.value) return;
+   
+   if (isLooping.value && activeLoopType.value === 'reverse') {
+      isLooping.value = false;
+      activeLoopType.value = null;
+      clearLoop();
+   } else {
+      setLoop(reverseRegion.value.start, reverseRegion.value.end);
+      isLooping.value = true;
+      activeLoopType.value = 'reverse';
+      handlePlayReverse(true);
+   }
+};
+
+// Play Once Region Handlers
+const playForwardRegion = () => {
+  if (!forwardRegion.value) return;
+  
+  // Requirement: "Strictly bounded"
+  // We will loop it for now as "Bounded Playback" is often synonymous with looping the selection.
+  // If the user wants to play once, they can toggle loop off.
+  
+  setLoop(forwardRegion.value.start, forwardRegion.value.end);
+  isLooping.value = true;
+  activeLoopType.value = 'forward';
+  
+  seekTo(forwardRegion.value.start);
+  handlePlayForward(true);
+};
+
+const playReverseRegion = () => {
+  if (!reverseRegion.value) return;
+
+  setLoop(reverseRegion.value.start, reverseRegion.value.end);
+  isLooping.value = true;
+  activeLoopType.value = 'reverse';
+
+  seekTo(reverseRegion.value.start);
+  handlePlayReverse(true);
 };
 
 const addMarkerAtCurrentTime = async () => {
@@ -866,15 +1149,21 @@ const deleteMarkerById = async (markerId) => {
 };
 
 const saveSnippet = async () => {
-  if (!selectedRegion.value || !analysisId.value) return;
+  if (!reverseRegion.value || !analysisId.value) return;
   
   isSavingSnippet.value = true;
   
+  // Use forward region if available, otherwise default to reverse region (legacy behavior)
+  const fStart = forwardRegion.value ? forwardRegion.value.start : reverseRegion.value.start;
+  const fEnd = forwardRegion.value ? forwardRegion.value.end : reverseRegion.value.end;
+
   try {
     const response = await axios.post(`${API_BASE}/api/extract-video-snippet`, {
       analysisId: analysisId.value,
-      start: selectedRegion.value.start,
-      end: selectedRegion.value.end,
+      start: reverseRegion.value.start,
+      end: reverseRegion.value.end,
+      forwardStart: fStart,
+      forwardEnd: fEnd,
       playbackSpeed: playbackSpeed.value,
       name: snippetName.value,
       annotation: snippetAnnotation.value,
@@ -893,7 +1182,7 @@ const saveSnippet = async () => {
     snippetName.value = '';
     snippetAnnotation.value = '';
     includeVideoInSnippet.value = false;
-    clearSelectedRegion();
+    clearAllRegions();
   } catch (err) {
     error.value = 'Failed to save snippet: ' + (err.response?.data?.error || err.message);
   } finally {
@@ -924,6 +1213,7 @@ const exportStitchedAudio = async (snippet) => {
     exportingSnippets.value[snippet.id] = {};
   }
   exportingSnippets.value[snippet.id].audio = true;
+  exportingSnippets.value[snippet.id].any = true;
   
   try {
     const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
@@ -951,6 +1241,7 @@ const exportStitchedAudio = async (snippet) => {
     error.value = 'Failed to export audio: ' + (err.response?.data?.error || err.message);
   } finally {
     exportingSnippets.value[snippet.id].audio = false;
+    exportingSnippets.value[snippet.id].any = false;
   }
 };
 
@@ -960,6 +1251,7 @@ const exportStitchedVideo = async (snippet) => {
     exportingSnippets.value[snippet.id] = {};
   }
   exportingSnippets.value[snippet.id].video = true;
+  exportingSnippets.value[snippet.id].any = true;
   
   try {
     const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
@@ -987,6 +1279,48 @@ const exportStitchedVideo = async (snippet) => {
     error.value = 'Failed to export video: ' + (err.response?.data?.error || err.message);
   } finally {
     exportingSnippets.value[snippet.id].video = false;
+    exportingSnippets.value[snippet.id].any = false;
+  }
+};
+
+const exportCompletePackage = async (snippet) => {
+  if (!exportingSnippets.value[snippet.id]) {
+    exportingSnippets.value[snippet.id] = {};
+  }
+  exportingSnippets.value[snippet.id].package = true;
+  exportingSnippets.value[snippet.id].any = true;
+
+  try {
+     const speeds = snippetSpeeds.value[snippet.id] || { forward: 1, reversed: 1 };
+
+     const response = await axios.post(`${API_BASE}/api/stitch-snippet`, {
+      snippetId: snippet.id,
+      analysisId: analysisId.value,
+      reversedSpeed: speeds.reversed,
+      forwardSpeed: speeds.forward,
+      exportType: 'complete_package'
+    }, {
+      responseType: 'blob'
+    });
+
+    const isVideo = snippet.type === 'video';
+    const ext = isVideo ? 'mp4' : 'wav';
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${snippet.name || 'snippet'}_package.${ext}`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+  } catch (err) {
+     error.value = 'Failed to export package: ' + (err.response?.data?.error || err.message);
+  } finally {
+     exportingSnippets.value[snippet.id].package = false;
+     exportingSnippets.value[snippet.id].any = false;
   }
 };
 
@@ -1056,14 +1390,27 @@ onUnmounted(() => {
     waveSurfer.destroy();
     waveSurfer = null;
   }
+  if (forwardWaveSurfer) {
+    forwardWaveSurfer.destroy();
+    forwardWaveSurfer = null;
+  }
 });
 
 // Sync waveform cursor with video time
+// We need to watch both videos mostly because they might be playing unsynced
+const updateWaveforms = (time) => {
+    if (waveSurfer && !isNaN(time)) {
+      const progress = time / (duration.value || 1); // avoid /0
+      waveSurfer.seekTo(Math.min(1, Math.max(0, progress)));
+    }
+    if (forwardWaveSurfer && !isNaN(time)) {
+        const progress = time / (duration.value || 1);
+        forwardWaveSurfer.seekTo(Math.min(1, Math.max(0, progress)));
+    }
+};
+
 watch(currentTime, (time) => {
-  if (waveSurfer && !isNaN(time)) {
-    const progress = time / duration.value;
-    waveSurfer.seekTo(Math.min(1, Math.max(0, progress)));
-  }
+   updateWaveforms(time);
 });
 </script>
 
